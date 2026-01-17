@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+out/
+
+# Generated files
+font_browser.html
+
+# OS files
+.DS_Store
+
+# Font collections (too large for repo - font data is in src/font_*.c)
+fonts/
+
+# Editor files
+*.swp
+*~
+*.zip
