@@ -274,8 +274,8 @@ new_game:
     test_rack.counts[20] = 1;  /* T = 20 */
     test_rack.total = 3;
     Equity test_leave = klv_get_leave_value(&klv, &test_rack);
-    draw_string(0, 23, "RST LV:", 0);
-    draw_number(8, 23, test_leave, 0);
+    draw_string(0, 23, "RST:", 0);
+    draw_hex(5, 23, (uint32_t)(uint16_t)test_leave, 0);
 
     /* Wait for button press to restart */
     while (1) {
