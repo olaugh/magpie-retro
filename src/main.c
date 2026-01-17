@@ -109,6 +109,7 @@ typedef struct {
 static HistoryEntry history[MAX_HISTORY];
 static int history_count = 0;
 static uint32_t last_move_frames = 0;
+static uint32_t total_frames = 0;
 
 /* Add move to history - needs board to look up playthrough letters */
 static void add_to_history(const Move *m, int player, const Board *board) {
@@ -213,6 +214,7 @@ int main(void) {
                       &game.players[game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
         last_move_frames = frame_counter - start_frames;
+        total_frames += last_move_frames;
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
@@ -248,9 +250,28 @@ int main(void) {
         update_display(&game, history, history_count, last_move_frames);
     }
 
-    /* Game over - show final state */
+    /* Game over - show final state with total time */
+    /* Convert frames to seconds.hundredths (at 60fps) */
+    uint32_t total_seconds = total_frames / 60;
+    uint32_t remaining_frames = total_frames % 60;
+    uint32_t hundredths = (remaining_frames * 100) / 60;
+
     while (1) {
         update_display(&game, history, history_count, last_move_frames);
+
+        /* Display total time below rack (row 21) */
+        draw_string(0, 21, "TIME:", 0);
+        draw_number(5, 21, total_seconds, 0);
+        draw_char(9, 21, '.', 0);
+        /* Draw hundredths with leading zero if needed */
+        if (hundredths < 10) {
+            draw_char(10, 21, '0', 0);
+            draw_number(11, 21, hundredths, 0);
+        } else {
+            draw_number(10, 21, hundredths, 0);
+        }
+        draw_char(12, 21, 's', 0);
+
         wait_vblank();
     }
 
