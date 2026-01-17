@@ -203,7 +203,10 @@ _hblank:
     rte
 
 _vblank:
+    move.l  %d0, -(%sp)         | Save d0
+    move.w  0xC00004, %d0       | Read VDP status to acknowledge interrupt
     addq.l  #1, frame_counter
+    move.l  (%sp)+, %d0         | Restore d0
     rte
 
     .bss

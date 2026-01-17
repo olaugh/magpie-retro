@@ -40,7 +40,7 @@ void wait_vblank(void) {
 void vdp_init(void) {
     /* Set up VDP registers */
     vdp_set_reg(0, 0x04);   /* Mode reg 1: No H-int */
-    vdp_set_reg(1, 0x44);   /* Mode reg 2: Display ON, V-int ON */
+    vdp_set_reg(1, 0x64);   /* Mode reg 2: Display ON, V-int ON (bit 5) */
     vdp_set_reg(2, 0x30);   /* Plane A at 0xC000 */
     vdp_set_reg(3, 0x3C);   /* Window at 0xF000 */
     vdp_set_reg(4, 0x07);   /* Plane B at 0xE000 */
