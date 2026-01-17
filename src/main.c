@@ -22,6 +22,7 @@ extern void clear_screen(void);
 extern void draw_string(int x, int y, const char *str, int pal);
 extern void draw_char(int x, int y, char c, int pal);
 extern void draw_number(int x, int y, int num, int pal);
+extern void draw_hex(int x, int y, uint32_t num, int pal);
 extern void wait_vblank(void);
 extern void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames);
 
@@ -164,9 +165,9 @@ static void add_to_history(const Move *m, int player, const Board *board) {
 
 /* draw_history is called through update_display */
 
-int main(void) {
-    static uint32_t game_number = 0;
+static uint32_t game_number = 0;
 
+int main(void) {
     /* Initialize controller port */
     CTRL_CTRL_1 = 0x40;
 
@@ -182,8 +183,8 @@ int main(void) {
     klv_init(&klv, klv_data, klv_word_counts);
 
 new_game:
-    /* Seed RNG with different value each game */
-    rng_seed(0xDEADBEEF + game_number);
+    /* Seed RNG deterministically: 0, 1, 2, ... */
+    rng_seed(game_number);
     game_number++;
 
     /* Initialize game state */
@@ -257,34 +258,15 @@ new_game:
     /* Game over - show final state with total time */
     update_display(&game, history, history_count, last_move_frames);
 
-    /* Convert frames to seconds.hundredths (at 60fps) */
-    uint32_t total_seconds = total_frames / 60;
-    uint32_t remaining_frames = total_frames % 60;
-    uint32_t hundredths = (remaining_frames * 100) / 60;
-
-    /* Display total time below rack (row 21) */
-    /* Format: "TIME: XXX.XXs" - clear line first */
-    draw_string(0, 21, "                ", 0);
-    draw_string(0, 21, "TIME:", 0);
-    draw_number(6, 21, total_seconds, 0);
-    /* Find where seconds ended to place decimal */
-    int x = 6;
-    if (total_seconds >= 1000) x += 4;
-    else if (total_seconds >= 100) x += 3;
-    else if (total_seconds >= 10) x += 2;
-    else x += 1;
-    draw_char(x++, 21, '.', 0);
-    if (hundredths < 10) {
-        draw_char(x++, 21, '0', 0);
-    }
-    draw_number(x, 21, hundredths, 0);
-    x += (hundredths >= 10) ? 2 : 1;
-    draw_char(x, 21, 's', 0);
+    /* Display total frames below rack (row 22) - avoid division for now */
+    draw_string(0, 22, "FRAMES:", 0);
+    draw_hex(8, 22, total_frames, 0);
 
     /* Wait for button press to restart */
     while (1) {
         wait_vblank();
-        if (read_controller() != 0) {
+        unsigned char buttons = read_controller();
+        if (buttons != 0) {
             /* Wait for button release */
             while (read_controller() != 0) {
                 wait_vblank();
