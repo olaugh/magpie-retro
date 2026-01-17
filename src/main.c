@@ -4,6 +4,7 @@
 
 #include "scrabble.h"
 #include "kwg.h"
+#include "klv.h"
 
 #ifndef NULL
 #define NULL ((void *)0)
@@ -37,11 +38,21 @@ extern int game_play_move(GameState *game, const Move *move);
 extern void game_pass(GameState *game);
 extern int game_is_over(const GameState *game);
 extern void board_update_cross_sets(Board *board, const uint32_t *kwg);
-extern void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg, MoveList *moves);
+extern void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
+                           const KLV *klv, const Bag *bag, MoveList *moves);
 extern void sort_moves_by_score(MoveList *moves);
 
 /* KWG lexicon (embedded in ROM) */
 extern const uint32_t kwg_data[];
+
+/* KLV leave values (embedded in ROM) */
+extern const uint8_t klv_data[];
+
+/* RAM buffer for word_counts (computed at startup) */
+/* NWL23 KLV has 2209 nodes, need 2209 * 4 = ~9KB */
+#define KLV_WORD_COUNTS_SIZE 2500
+static uint32_t klv_word_counts[KLV_WORD_COUNTS_SIZE];
+static KLV klv;
 
 /* Controller reading */
 #define CTRL_DATA_1 (*((volatile unsigned char *)0xA10003))
@@ -165,6 +176,9 @@ int main(void) {
     draw_string(10, 12, "INITIALIZING...", 0);
     wait_vblank();
 
+    /* Initialize KLV (leave values) */
+    klv_init(&klv, klv_data, klv_word_counts);
+
     board_init(&game.board);
     bag_init(&game.bag);
     bag_shuffle(&game.bag);
@@ -192,7 +206,7 @@ int main(void) {
         /* Generate moves for current player */
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
-                      kwg_data, &moves);
+                      kwg_data, &klv, &game.bag, &moves);
 
         /* Update display */
         update_display(&game, history, history_count);
@@ -202,7 +216,20 @@ int main(void) {
             Move *best = &moves.moves[0];
             int current = game.current_player;
 
-            if (game_play_move(&game, best)) {
+            /* Check if this is an exchange move (dir == 0xFF) */
+            if (best->dir == 0xFF) {
+                /* Exchange tiles */
+                if (game_exchange(&game, best->tiles, best->tiles_played)) {
+                    /* Add exchange to history */
+                    HistoryEntry *h = &history[history_count < MAX_HISTORY ? history_count++ : MAX_HISTORY - 1];
+                    h->word[0] = 'X';
+                    h->word[1] = best->tiles_played + '0';
+                    h->word[2] = '\0';
+                    h->blanks = 0;
+                    h->score = 0;
+                    h->player = current;
+                }
+            } else if (game_play_move(&game, best)) {
                 /* Add to history (after move is played, so board has the tiles) */
                 add_to_history(best, current, &game.board);
 

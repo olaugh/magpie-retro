@@ -6,10 +6,18 @@
  * 2. Start from anchor, traverse GADDAG going left first
  * 3. After hitting separator node, continue right from anchor
  * 4. Record valid words when accepts flag is set
+ *
+ * Move selection uses equity = score*8 + leave_value (in eighths of a point)
+ * to prefer moves that leave good tiles for future turns.
  */
 
 #include "scrabble.h"
 #include "kwg.h"
+#include "klv.h"
+
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
 
 /* From libc.c */
 extern void *memset(void *s, int c, unsigned long n);
@@ -19,9 +27,10 @@ extern void *memcpy(void *dest, const void *src, unsigned long n);
 typedef struct {
     const Board *board;
     const uint32_t *kwg;
+    const KLV *klv;      /* Leave values (may be NULL) */
     Rack rack;           /* Mutable copy of player rack */
     Move *best_move;     /* Track best move found so far */
-    Score best_score;    /* Score of best move */
+    Equity best_equity;  /* Equity of best move (in eighths) */
     uint16_t move_count; /* Total moves found */
     uint32_t rack_bits;  /* Bitmap of letters in rack for fast lookup */
 
@@ -45,6 +54,9 @@ typedef struct {
     int16_t main_word_score;
     int16_t cross_score;
     uint8_t word_multiplier;
+
+    /* Leave tracking */
+    LeaveMap leave_map;  /* For O(1) leave lookup during generation */
 
     /* Cache of current row */
     MachineLetter row_letters[BOARD_DIM];
@@ -120,7 +132,7 @@ static inline int in_cross_set(CrossSet cs, MachineLetter ml) {
     return (cs & (1U << UNBLANKED(ml))) != 0;
 }
 
-/* Record a valid move - only keeps best */
+/* Record a valid move - only keeps best by equity */
 static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     gen->move_count++;
 
@@ -132,11 +144,19 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
         score += 50;
     }
 
+    /* Calculate equity = score*8 + leave_value (both in eighths of a point) */
+    Equity equity = (Equity)(score * 8);
+
+    /* Add leave value if KLV is available */
+    if (gen->klv != NULL) {
+        equity += leave_map_get_current(&gen->leave_map);
+    }
+
     /* Only record if better than current best */
-    if (score <= gen->best_score) return;
+    if (equity <= gen->best_equity) return;
 
     Move *move = gen->best_move;
-    gen->best_score = score;
+    gen->best_equity = equity;
 
     /* For horizontal: current_row is row, leftstrip is col
      * For vertical: current_row is actually col, leftstrip is row */
@@ -321,8 +341,20 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                         gen->rack.total--;
                         gen->tiles_played++;
 
+                        /* Update leave map */
+                        if (gen->klv != NULL) {
+                            leave_map_take_letter(&gen->leave_map, tile,
+                                                  gen->rack.counts[tile]);
+                        }
+
                         go_on(gen, col, tile, next_index, accepts,
                               leftstrip, rightstrip);
+
+                        /* Restore leave map */
+                        if (gen->klv != NULL) {
+                            leave_map_add_letter(&gen->leave_map, tile,
+                                                 gen->rack.counts[tile]);
+                        }
 
                         gen->tiles_played--;
                         gen->rack.total++;
@@ -335,8 +367,20 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                         gen->rack.total--;
                         gen->tiles_played++;
 
+                        /* Update leave map */
+                        if (gen->klv != NULL) {
+                            leave_map_take_letter(&gen->leave_map, BLANK_TILE,
+                                                  gen->rack.counts[BLANK_TILE]);
+                        }
+
                         go_on(gen, col, BLANKED(tile), next_index, accepts,
                               leftstrip, rightstrip);
+
+                        /* Restore leave map */
+                        if (gen->klv != NULL) {
+                            leave_map_add_letter(&gen->leave_map, BLANK_TILE,
+                                                 gen->rack.counts[BLANK_TILE]);
+                        }
 
                         gen->tiles_played--;
                         gen->rack.total++;
@@ -462,17 +506,89 @@ static void show_recursion_count(void) {
     draw_char(34, 26, "0123456789ABCDEF"[n & 0xF], 0);
 }
 
+/*
+ * Generate all exchange moves and find best by leave value
+ * Exchange moves trade tiles for new ones from the bag.
+ * We generate all 2^n - 1 possible exchanges and pick the best leave.
+ */
+static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
+                                     Move *best_exchange, Equity *best_exchange_equity) {
+    if (bag == NULL || bag->count < RACK_SIZE) {
+        /* Can only exchange when bag has >= 7 tiles */
+        return;
+    }
+
+    if (gen->klv == NULL) {
+        /* Need KLV for leave-based exchange selection */
+        return;
+    }
+
+    /* Try all non-empty subsets of tiles to exchange */
+    /* We iterate through possible exchanges using the leave_map indexing */
+    Rack temp_rack;
+    memcpy(&temp_rack, &gen->rack, sizeof(Rack));
+
+    *best_exchange_equity = -32767;  /* Start with very low equity */
+
+    /* Use bitmask to enumerate all subsets of the rack */
+    uint8_t rack_size = gen->rack.total;
+    uint16_t max_mask = (1 << rack_size) - 1;
+
+    for (uint16_t mask = 1; mask <= max_mask; mask++) {
+        /* mask represents tiles to EXCHANGE (remove from rack) */
+        /* So the leave is the complement */
+        memcpy(&temp_rack, &gen->rack, sizeof(Rack));
+
+        uint8_t exchange_count = 0;
+        MachineLetter exchange_tiles[RACK_SIZE];
+
+        /* Iterate through rack positions */
+        uint8_t bit_pos = 0;
+        for (MachineLetter ml = 0; ml < ALPHABET_SIZE && bit_pos < rack_size; ml++) {
+            for (uint8_t c = 0; c < gen->rack.counts[ml]; c++) {
+                if (mask & (1 << bit_pos)) {
+                    /* This tile is exchanged */
+                    temp_rack.counts[ml]--;
+                    temp_rack.total--;
+                    exchange_tiles[exchange_count++] = ml;
+                }
+                bit_pos++;
+            }
+        }
+
+        /* Get leave value for remaining tiles */
+        Equity leave = klv_get_leave_value(gen->klv, &temp_rack);
+
+        /* Exchange has 0 points, so equity is just the leave value */
+        if (leave > *best_exchange_equity) {
+            *best_exchange_equity = leave;
+
+            /* Record this exchange */
+            best_exchange->row = 0;
+            best_exchange->col = 0;
+            best_exchange->dir = 0xFF;  /* Special marker for exchange */
+            best_exchange->tiles_played = exchange_count;
+            best_exchange->tiles_length = exchange_count;
+            best_exchange->score = 0;
+            for (int i = 0; i < exchange_count; i++) {
+                best_exchange->tiles[i] = exchange_tiles[i];
+            }
+        }
+    }
+}
+
 void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
-                   MoveList *moves) {
+                    const KLV *klv, const Bag *bag, MoveList *moves) {
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
 
     gen.board = board;
     gen.kwg = kwg;
+    gen.klv = klv;
 
     /* Use first slot in moves array as best_move storage */
     gen.best_move = &moves->moves[0];
-    gen.best_score = -32768;  /* Start with minimum score */
+    gen.best_equity = -32767;  /* Start with minimum equity */
     gen.move_count = 0;
 
     /* Reset recursion counter */
@@ -480,6 +596,11 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
     /* Copy rack (we modify it during generation) */
     memcpy(&gen.rack, rack, sizeof(Rack));
+
+    /* Initialize leave map if KLV is available */
+    if (klv != NULL) {
+        leave_map_init(&gen.leave_map, klv, rack);
+    }
 
     /* Generate horizontal moves */
     for (int row = 0; row < BOARD_DIM; row++) {
@@ -495,8 +616,24 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         gen_for_row(&gen);
     }
 
+    /* Generate exchange moves if no good play found or bag allows */
+    Move best_exchange;
+    Equity best_exchange_equity = -32767;
+    generate_exchange_moves(&gen, bag, &best_exchange, &best_exchange_equity);
+
+    /* Compare best play vs best exchange */
+    if (best_exchange_equity > gen.best_equity && gen.move_count > 0) {
+        /* Exchange is better than best play - unusual but possible */
+        memcpy(&moves->moves[0], &best_exchange, sizeof(Move));
+        gen.best_equity = best_exchange_equity;
+    } else if (gen.move_count == 0 && best_exchange_equity > -32767) {
+        /* No plays found, use exchange */
+        memcpy(&moves->moves[0], &best_exchange, sizeof(Move));
+        gen.best_equity = best_exchange_equity;
+    }
+
     /* Set count: 0 if no moves found, 1 if best move found */
-    moves->count = (gen.best_score > -32768) ? 1 : 0;
+    moves->count = (gen.best_equity > -32767) ? 1 : 0;
 }
 
 /*

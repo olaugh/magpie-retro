@@ -44,6 +44,10 @@ ROM = $(OUT_DIR)/$(ROM_NAME).bin
 KWG_SRC = $(BUILD_DIR)/kwg_data.c
 KWG_OBJ = $(BUILD_DIR)/kwg_data.o
 
+# KLV leave values data
+KLV_SRC = $(BUILD_DIR)/klv_data.c
+KLV_OBJ = $(BUILD_DIR)/klv_data.o
+
 .PHONY: all clean dirs
 
 all: dirs $(ROM)
@@ -62,7 +66,7 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.s
 	$(AS) $(ASFLAGS) -o $@ $<
 
 # Link
-$(BUILD_DIR)/$(ROM_NAME).elf: $(BUILD_DIR)/boot.o $(C_OBJECTS) $(KWG_OBJ)
+$(BUILD_DIR)/$(ROM_NAME).elf: $(BUILD_DIR)/boot.o $(C_OBJECTS) $(KWG_OBJ) $(KLV_OBJ)
 	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
 
 # Create ROM binary
@@ -86,3 +90,10 @@ symbols: $(BUILD_DIR)/$(ROM_NAME).elf
 # Generate KWG data (run separately before building)
 kwg:
 	python3 tools/kwg2c.py /Users/olaugh/sources/jan14-magpie/MAGPIE/data/lexica/NWL23.kwg $(KWG_SRC)
+
+# Generate KLV data (run separately before building)
+klv:
+	python3 tools/klv2c.py data/NWL23.klv16 $(KLV_SRC)
+
+# Generate all data files
+data: kwg klv

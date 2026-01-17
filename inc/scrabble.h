@@ -154,9 +154,13 @@ MachineLetter bag_draw(Bag *bag);
 void bag_refill_rack(Bag *bag, Rack *rack);
 void bag_return_tiles(Bag *bag, const MachineLetter *tiles, int count);
 
+/* Forward declaration for KLV */
+struct KLV;
+typedef struct KLV KLV;
+
 /* Move generation */
 void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
-                   MoveList *moves);
+                    const KLV *klv, const Bag *bag, MoveList *moves);
 void sort_moves_by_score(MoveList *moves);
 
 /* Scoring */
