@@ -213,6 +213,9 @@ new_game:
 
     /* Auto-play loop */
     while (!game_is_over(&game)) {
+        /* Show current state before generating moves */
+        update_display(&game, history, history_count, last_move_frames);
+
         /* Generate moves for current player, tracking frame count */
         uint32_t start_frames = frame_counter;
         generate_moves(&game.board,
