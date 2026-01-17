@@ -95,7 +95,7 @@ static GameState game;
 static MoveList moves;
 
 /* Move history for display */
-#define MAX_HISTORY 12
+#define MAX_HISTORY 28
 typedef struct {
     char word[16];     /* The word played (all uppercase) */
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
@@ -245,7 +245,6 @@ int main(void) {
     /* Game over - show final state */
     while (1) {
         update_display(&game, history, history_count);
-        draw_string(19, 18, "GAME OVER", 0);
         wait_vblank();
     }
 

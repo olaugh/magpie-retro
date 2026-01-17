@@ -742,17 +742,19 @@ void draw_rack(const Rack *rack) {
     }
 }
 
-/* Draw scores - simplified, just > marker and score */
+/* Draw scores above the board on the left side */
 void draw_scores(const GameState *game) {
-    int y = BOARD_TOP + 1;
+    /* Player 1 score on row 1 */
+    draw_char(0, 1, (game->current_player == 0) ? '>' : ' ', 0);
+    draw_string(1, 1, "P1:", 0);
+    draw_number(4, 1, game->players[0].score, 0);
+    draw_string(8, 1, "    ", 0);  /* Clear trailing */
 
-    /* Player 1 */
-    draw_char(19, y, (game->current_player == 0) ? '>' : ' ', 0);
-    draw_number(20, y, game->players[0].score, 0);
-
-    /* Player 2 */
-    draw_char(19, y + 1, (game->current_player == 1) ? '>' : ' ', 0);
-    draw_number(20, y + 1, game->players[1].score, 0);
+    /* Player 2 score on row 2 */
+    draw_char(0, 2, (game->current_player == 1) ? '>' : ' ', 0);
+    draw_string(1, 2, "P2:", 0);
+    draw_number(4, 2, game->players[1].score, 0);
+    draw_string(8, 2, "    ", 0);  /* Clear trailing */
 }
 
 /* History entry structure (must match main.c) */
@@ -763,44 +765,49 @@ typedef struct {
     uint8_t player;
 } HistoryEntry;
 
-/* Draw move history in sidebar */
+/* Draw move history in sidebar - uses rows 0-27 on the right side */
+#define HISTORY_START_ROW 0
+#define HISTORY_ROWS 28    /* Rows 0-27 = 28 rows available */
+#define HISTORY_COL 18     /* Start column for history */
+
 void draw_history(const HistoryEntry *hist, int count) {
-    int base_y = BOARD_TOP + 4;
     int start = 0;
 
-    /* Show last 12 moves that fit */
-    if (count > 12) start = count - 12;
+    /* Show last HISTORY_ROWS moves that fit */
+    if (count > HISTORY_ROWS) start = count - HISTORY_ROWS;
 
-    for (int i = 0; i < 12; i++) {
-        int y = base_y + i;
+    for (int i = 0; i < HISTORY_ROWS; i++) {
+        int y = HISTORY_START_ROW + i;
         int idx = start + i;
 
         if (idx < count) {
             const HistoryEntry *h = &hist[idx];
-            /* Player indicator */
-            draw_char(19, y, (h->player == 0) ? '>' : ' ', 0);
-            draw_char(20, y, (h->player == 1) ? '>' : ' ', 0);
-            /* Word (up to 8 chars to fit) */
+            /* Player indicator: > for P1, < for P2 */
+            draw_char(HISTORY_COL, y, (h->player == 0) ? '>' : '<', 0);
+            /* Word (up to 10 chars to fit before score) */
             int word_ended = 0;
-            for (int j = 0; j < 8; j++) {
+            for (int j = 0; j < 10; j++) {
                 char c = h->word[j];
                 if (word_ended || c == '\0') {
-                    /* Clear remaining space after end of word */
-                    draw_char(21 + j, y, ' ', 0);
+                    draw_char(HISTORY_COL + 1 + j, y, ' ', 0);
                     word_ended = 1;
                 } else {
                     /* Use grey (palette 1) for blanks, white (palette 0) for normal */
                     int pal = (h->blanks & (1 << j)) ? 1 : 0;
-                    draw_char(21 + j, y, c, pal);
+                    draw_char(HISTORY_COL + 1 + j, y, c, pal);
                 }
             }
-            /* Score */
-            draw_number(30, y, h->score, 0);
-            /* Clear end */
-            draw_string(34, y, "    ", 0);
+            /* Score (columns 29-33) */
+            draw_number(HISTORY_COL + 11, y, h->score, 0);
+            /* Clear rest of line */
+            for (int j = HISTORY_COL + 15; j < 40; j++) {
+                draw_char(j, y, ' ', 0);
+            }
         } else {
             /* Clear empty rows */
-            draw_string(19, y, "                ", 0);
+            for (int j = HISTORY_COL; j < 40; j++) {
+                draw_char(j, y, ' ', 0);
+            }
         }
     }
 }
