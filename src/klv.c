@@ -21,36 +21,49 @@ extern void *memcpy(void *dest, const void *src, unsigned long n);
  * Build word_counts array for entire DAWG
  * Fully iterative to avoid stack overflow on 68000
  *
- * Processing backwards ensures children (arc_index) and siblings (index+1)
- * are computed before we need them.
+ * In a DAWG, some nodes may have children at higher indices due to
+ * node sharing. We use multiple passes until values stabilize.
+ * Maximum depth is RACK_SIZE-1 = 6, so at most 6 passes needed.
  */
 static void compute_word_counts(KLV *klv) {
     uint32_t kwg_size = klv->kwg_size;
+    int changed;
 
-    /* Process nodes in reverse order */
-    for (uint32_t i = kwg_size; i > 0; ) {
-        i--;
-        uint32_t node = klv->kwg[i];
-        uint32_t count = 0;
+    /* Zero initialize */
+    memset(klv->word_counts, 0, kwg_size * sizeof(uint32_t));
 
-        /* This node accepts? */
-        if (KLV_KWG_ACCEPTS(node)) {
-            count = 1;
+    /* Iterate until no changes (max RACK_SIZE-1 passes) */
+    do {
+        changed = 0;
+
+        /* Process nodes in reverse order */
+        for (uint32_t i = kwg_size; i > 0; ) {
+            i--;
+            uint32_t node = klv->kwg[i];
+            uint32_t count = 0;
+
+            /* This node accepts? */
+            if (KLV_KWG_ACCEPTS(node)) {
+                count = 1;
+            }
+
+            /* Add children count */
+            uint32_t child_index = KLV_KWG_ARC_INDEX(node);
+            if (child_index != 0 && child_index < kwg_size) {
+                count += klv->word_counts[child_index];
+            }
+
+            /* Add siblings count */
+            if (!KLV_KWG_IS_END(node) && i + 1 < kwg_size) {
+                count += klv->word_counts[i + 1];
+            }
+
+            if (klv->word_counts[i] != count) {
+                klv->word_counts[i] = count;
+                changed = 1;
+            }
         }
-
-        /* Add children count */
-        uint32_t child_index = KLV_KWG_ARC_INDEX(node);
-        if (child_index != 0 && child_index < kwg_size) {
-            count += klv->word_counts[child_index];
-        }
-
-        /* Add siblings count */
-        if (!KLV_KWG_IS_END(node) && i + 1 < kwg_size) {
-            count += klv->word_counts[i + 1];
-        }
-
-        klv->word_counts[i] = count;
-    }
+    } while (changed);
 }
 
 /* Read little-endian uint32 from byte pointer */
