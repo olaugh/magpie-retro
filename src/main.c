@@ -265,18 +265,6 @@ new_game:
     draw_string(0, 22, "FRAMES:", 0);
     draw_hex(8, 22, total_frames, 0);
 
-    /* Debug: test leave value lookup for a known rack (RST) */
-    /* RST should have a positive leave value */
-    Rack test_rack;
-    rack_init(&test_rack);
-    test_rack.counts[18] = 1;  /* R = 18 */
-    test_rack.counts[19] = 1;  /* S = 19 */
-    test_rack.counts[20] = 1;  /* T = 20 */
-    test_rack.total = 3;
-    Equity test_leave = klv_get_leave_value(&klv, &test_rack);
-    draw_string(0, 23, "RST:", 0);
-    draw_hex(5, 23, (uint32_t)(uint16_t)test_leave, 0);
-
     /* Wait for button press to restart */
     while (1) {
         wait_vblank();
