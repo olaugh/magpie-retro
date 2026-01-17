@@ -625,6 +625,29 @@ void draw_number(int x, int y, int num, int pal) {
     }
 }
 
+/* Draw a number in hexadecimal */
+void draw_hex(int x, int y, uint32_t num, int pal) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char buf[8];
+
+    /* Convert to hex digits (up to 8 nibbles for 32-bit) */
+    for (int i = 7; i >= 0; i--) {
+        buf[i] = hex_chars[num & 0xF];
+        num >>= 4;
+    }
+
+    /* Skip leading zeros but always show at least one digit */
+    int start = 0;
+    while (start < 7 && buf[start] == '0') {
+        start++;
+    }
+
+    /* Print digits */
+    for (int i = start; i < 8; i++) {
+        draw_char(x++, y, buf[i], pal);
+    }
+}
+
 /* Clear screen */
 void clear_screen(void) {
     vdp_set_vram_write(0xC000);
@@ -750,9 +773,9 @@ void draw_scores(const GameState *game, uint32_t move_frames) {
     draw_number(4, 0, game->players[0].score, 0);
     draw_string(8, 0, "  ", 0);  /* Clear trailing */
 
-    /* Frame count on row 0, right of P1 score */
-    draw_number(10, 0, move_frames, 0);
-    draw_string(14, 0, "   ", 0);  /* Clear trailing */
+    /* Frame count in hex on row 0, right of P1 score */
+    draw_hex(10, 0, move_frames, 0);
+    draw_string(18, 0, " ", 0);  /* Clear trailing */
 
     /* Player 2 score on row 1 */
     draw_char(0, 1, (game->current_player == 1) ? '>' : ' ', 0);
