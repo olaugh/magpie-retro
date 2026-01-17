@@ -261,9 +261,21 @@ new_game:
     /* Game over - show final state with total time */
     update_display(&game, history, history_count, last_move_frames);
 
-    /* Display total frames below rack (row 22) - avoid division for now */
+    /* Display total frames below rack (row 22) */
     draw_string(0, 22, "FRAMES:", 0);
     draw_hex(8, 22, total_frames, 0);
+
+    /* Debug: test leave value lookup for a known rack (RST) */
+    /* RST should have a positive leave value */
+    Rack test_rack;
+    rack_init(&test_rack);
+    test_rack.counts[18] = 1;  /* R = 18 */
+    test_rack.counts[19] = 1;  /* S = 19 */
+    test_rack.counts[20] = 1;  /* T = 20 */
+    test_rack.total = 3;
+    Equity test_leave = klv_get_leave_value(&klv, &test_rack);
+    draw_string(0, 23, "RST LV:", 0);
+    draw_number(8, 23, test_leave, 0);
 
     /* Wait for button press to restart */
     while (1) {
