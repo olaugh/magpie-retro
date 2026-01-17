@@ -21,7 +21,10 @@ static uint16_t rng_next(void) {
 }
 
 void rng_seed(uint32_t seed) {
-    rng_state = (uint16_t)(seed ? seed : 1);
+    /* Mix the seed to ensure different values produce different states */
+    /* Seed 0 and 1 must produce different states */
+    uint32_t mixed = seed * 2654435761u + 1;  /* Knuth multiplicative hash + 1 */
+    rng_state = (uint16_t)(mixed | 1);  /* Ensure non-zero (odd) */
 }
 
 /* Fast random number in range [0, n) using multiply-high */
