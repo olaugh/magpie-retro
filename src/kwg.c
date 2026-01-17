@@ -63,20 +63,26 @@ CrossSet compute_cross_set(const uint32_t *kwg,
         return TRIVIAL_CROSS_SET;
     }
 
-    /* Calculate cross-score from existing tiles */
+    /* Calculate cross-score from existing tiles.
+     * Blanks (marked with BLANK_BIT) score 0, regular tiles use TILE_SCORES. */
     for (int i = 0; i < prefix_len; i++) {
-        *cross_score += TILE_SCORES[prefix[i]];
+        if (!IS_BLANKED(prefix[i])) {
+            *cross_score += TILE_SCORES[UNBLANKED(prefix[i])];
+        }
+        /* else: blank tiles score 0, nothing to add */
     }
     for (int i = 0; i < suffix_len; i++) {
-        *cross_score += TILE_SCORES[suffix[i]];
+        if (!IS_BLANKED(suffix[i])) {
+            *cross_score += TILE_SCORES[UNBLANKED(suffix[i])];
+        }
     }
 
     /* Start from DAWG root */
     uint32_t node_index = kwg_get_dawg_root(kwg);
 
-    /* Follow prefix */
+    /* Follow prefix (use UNBLANKED for dictionary lookup) */
     for (int i = 0; i < prefix_len; i++) {
-        node_index = kwg_follow_arc(kwg, node_index, prefix[i]);
+        node_index = kwg_follow_arc(kwg, node_index, UNBLANKED(prefix[i]));
         if (node_index == 0) {
             /* Prefix not in dictionary - no valid letters */
             return 0;
@@ -107,9 +113,10 @@ CrossSet compute_cross_set(const uint32_t *kwg,
 
                 for (int j = 0; j < suffix_len && valid; j++) {
                     int found = 0;
+                    MachineLetter suf_letter = UNBLANKED(suffix[j]);  /* Use unblanked for lookup */
                     for (uint32_t k = suf_node; ; k++) {
                         uint32_t n = kwg_get_node(kwg, k);
-                        if (KWG_TILE(n) == suffix[j]) {
+                        if (KWG_TILE(n) == suf_letter) {
                             if (j == suffix_len - 1) {
                                 /* Last suffix letter - check accepts */
                                 if (KWG_ACCEPTS(n)) {
