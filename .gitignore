@@ -8,10 +8,13 @@ font_browser.html
 # OS files
 .DS_Store
 
-# Font collections (too large for repo - font data is in src/font_*.c)
+# Font data (download with scripts/download_fonts.sh)
 fonts/
+
+# Archives
+*.zip
+*.tar.gz
 
 # Editor files
 *.swp
 *~
-*.zip
