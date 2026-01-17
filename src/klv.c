@@ -282,10 +282,10 @@ void leave_map_init(LeaveMap *lm, const KLV *klv, const Rack *rack) {
     Rack temp_rack;
     memcpy(&temp_rack, rack, sizeof(Rack));
 
-    /* Start with index 0 (empty rack) */
+    /* Start with index 0 (full rack - no tiles played yet) */
     lm->current_index = 0;
     populate_leave_values(lm, klv, &temp_rack, 0);
 
-    /* Reset to full rack */
-    lm->current_index = (1 << rack->total) - 1;
+    /* Keep at 0 - no tiles played yet at start of move generation */
+    /* As tiles are played, bits get SET in current_index */
 }
