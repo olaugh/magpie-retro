@@ -100,22 +100,24 @@ void leave_map_init(LeaveMap *lm, const KLV *klv, const Rack *rack);
 /*
  * Take a letter from rack (during move generation)
  * Updates current_index for O(1) leave lookup
+ * Must use reversed_bit_map to match populate_leave_values indexing
  */
 static inline void leave_map_take_letter(LeaveMap *lm, MachineLetter letter,
                                           uint8_t count_after) {
     uint8_t base = lm->letter_base_index[letter];
     uint8_t bit_index = base + count_after;
-    lm->current_index &= ~(1 << bit_index);
+    lm->current_index |= lm->reversed_bit_map[bit_index];
 }
 
 /*
  * Add letter back to rack (backtracking)
+ * Must use reversed_bit_map to match populate_leave_values indexing
  */
 static inline void leave_map_add_letter(LeaveMap *lm, MachineLetter letter,
                                          uint8_t count_before) {
     uint8_t base = lm->letter_base_index[letter];
     uint8_t bit_index = base + count_before;
-    lm->current_index |= (1 << bit_index);
+    lm->current_index &= ~lm->reversed_bit_map[bit_index];
 }
 
 /*
