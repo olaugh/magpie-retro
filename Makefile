@@ -74,9 +74,10 @@ $(BUILD_DIR)/nwl23/klv_data.o: $(BUILD_DIR)/nwl23/klv_data.c
 # Object files for NWL23 (in lexicon-specific subdir)
 NWL23_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23/%.o,$(C_SOURCES))
 NWL23_S_OBJECTS = $(patsubst $(SRC_DIR)/%.s,$(BUILD_DIR)/nwl23/%.o,$(S_SOURCES))
+NWL23_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"NWL23"'
 
 $(BUILD_DIR)/nwl23/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(NWL23_CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/nwl23/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23
 	$(AS) $(ASFLAGS) -o $@ $<
@@ -117,9 +118,10 @@ $(BUILD_DIR)/csw24/klv_data.o: $(BUILD_DIR)/csw24/klv_data.c
 # Object files for CSW24 (in lexicon-specific subdir)
 CSW24_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24/%.o,$(C_SOURCES))
 CSW24_S_OBJECTS = $(patsubst $(SRC_DIR)/%.s,$(BUILD_DIR)/csw24/%.o,$(S_SOURCES))
+CSW24_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"CSW24"'
 
 $(BUILD_DIR)/csw24/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CSW24_CFLAGS) -c -o $@ $<
 
 $(BUILD_DIR)/csw24/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24
 	$(AS) $(ASFLAGS) -o $@ $<

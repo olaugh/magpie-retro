@@ -52,6 +52,11 @@ extern const uint32_t kwg_data[];
 /* KLV leave values (embedded in ROM) */
 extern const uint8_t klv_data[];
 
+/* Lexicon name (set via -DLEXICON_NAME in Makefile) */
+#ifndef LEXICON_NAME
+#define LEXICON_NAME "UNKNOWN"
+#endif
+
 /* RAM buffer for word_counts (computed at startup) */
 /* NWL23 KLV has 2209 nodes, need 2209 * 4 = ~9KB */
 #define KLV_WORD_COUNTS_SIZE 2500
@@ -166,6 +171,15 @@ static void add_to_history(const Move *m, int player, const Board *board) {
 /* draw_history is called through update_display */
 
 static uint32_t game_number = 0;
+static uint32_t current_seed = 0;
+
+/* Draw status bar at bottom left: lexicon and seed */
+static void draw_status_bar(void) {
+    /* Row 27 (bottom of screen): "NWL23 #0" or "CSW24 #123" */
+    draw_string(0, 27, LEXICON_NAME, 0);
+    draw_string(6, 27, "#", 0);
+    draw_number(7, 27, current_seed, 0);
+}
 
 int main(void) {
     /* Initialize controller port */
@@ -184,6 +198,7 @@ int main(void) {
 
 new_game:
     /* Seed RNG deterministically: 0, 1, 2, ... */
+    current_seed = game_number;
     rng_seed(game_number);
     game_number++;
 
@@ -210,6 +225,7 @@ new_game:
 
     board_update_cross_sets(&game.board, kwg_data);
     clear_screen();
+    draw_status_bar();
 
     /* Auto-play loop */
     while (!game_is_over(&game)) {
