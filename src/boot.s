@@ -206,9 +206,9 @@ _vblank:
     addq.l  #1, frame_counter
     rte
 
-    .data
+    .bss
     .globl  frame_counter
 frame_counter:
-    .long   0
+    .skip   4
 
     .end

@@ -752,8 +752,7 @@ void draw_scores(const GameState *game, uint32_t move_frames) {
 
     /* Frame count on row 0, right of P1 score */
     draw_number(10, 0, move_frames, 0);
-    draw_char(14, 0, 'f', 0);
-    draw_string(15, 0, "  ", 0);  /* Clear trailing */
+    draw_string(14, 0, "   ", 0);  /* Clear trailing */
 
     /* Player 2 score on row 1 */
     draw_char(0, 1, (game->current_player == 1) ? '>' : ' ', 0);
