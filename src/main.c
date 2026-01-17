@@ -23,7 +23,7 @@ extern void draw_string(int x, int y, const char *str, int pal);
 extern void draw_char(int x, int y, char c, int pal);
 extern void draw_number(int x, int y, int num, int pal);
 extern void wait_vblank(void);
-extern void update_display(const GameState *game, const void *history, int history_count);
+extern void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames);
 
 /* External game functions */
 extern void rng_seed(uint32_t seed);
@@ -41,6 +41,9 @@ extern void board_update_cross_sets(Board *board, const uint32_t *kwg);
 extern void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
                            const KLV *klv, const Bag *bag, MoveList *moves);
 extern void sort_moves_by_score(MoveList *moves);
+
+/* Frame counter (from boot.s vblank interrupt) */
+extern volatile uint32_t frame_counter;
 
 /* KWG lexicon (embedded in ROM) */
 extern const uint32_t kwg_data[];
@@ -105,6 +108,7 @@ typedef struct {
 
 static HistoryEntry history[MAX_HISTORY];
 static int history_count = 0;
+static uint32_t last_move_frames = 0;
 
 /* Add move to history - needs board to look up playthrough letters */
 static void add_to_history(const Move *m, int player, const Board *board) {
@@ -203,13 +207,15 @@ int main(void) {
 
     /* Auto-play loop */
     while (!game_is_over(&game)) {
-        /* Generate moves for current player */
+        /* Generate moves for current player, tracking frame count */
+        uint32_t start_frames = frame_counter;
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
+        last_move_frames = frame_counter - start_frames;
 
         /* Update display */
-        update_display(&game, history, history_count);
+        update_display(&game, history, history_count, last_move_frames);
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
@@ -244,7 +250,7 @@ int main(void) {
 
     /* Game over - show final state */
     while (1) {
-        update_display(&game, history, history_count);
+        update_display(&game, history, history_count, last_move_frames);
         wait_vblank();
     }
 

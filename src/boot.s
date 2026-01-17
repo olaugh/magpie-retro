@@ -203,6 +203,12 @@ _hblank:
     rte
 
 _vblank:
+    addq.l  #1, frame_counter
     rte
+
+    .data
+    .globl  frame_counter
+frame_counter:
+    .long   0
 
     .end

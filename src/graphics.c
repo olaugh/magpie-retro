@@ -742,19 +742,24 @@ void draw_rack(const Rack *rack) {
     }
 }
 
-/* Draw scores above the board on the left side */
-void draw_scores(const GameState *game) {
-    /* Player 1 score on row 1 */
-    draw_char(0, 1, (game->current_player == 0) ? '>' : ' ', 0);
-    draw_string(1, 1, "P1:", 0);
-    draw_number(4, 1, game->players[0].score, 0);
-    draw_string(8, 1, "    ", 0);  /* Clear trailing */
+/* Draw scores above the board on the left side, with frame count */
+void draw_scores(const GameState *game, uint32_t move_frames) {
+    /* Player 1 score on row 0 */
+    draw_char(0, 0, (game->current_player == 0) ? '>' : ' ', 0);
+    draw_string(1, 0, "P1:", 0);
+    draw_number(4, 0, game->players[0].score, 0);
+    draw_string(8, 0, "  ", 0);  /* Clear trailing */
 
-    /* Player 2 score on row 2 */
-    draw_char(0, 2, (game->current_player == 1) ? '>' : ' ', 0);
-    draw_string(1, 2, "P2:", 0);
-    draw_number(4, 2, game->players[1].score, 0);
-    draw_string(8, 2, "    ", 0);  /* Clear trailing */
+    /* Frame count on row 0, right of P1 score */
+    draw_number(10, 0, move_frames, 0);
+    draw_char(14, 0, 'f', 0);
+    draw_string(15, 0, "  ", 0);  /* Clear trailing */
+
+    /* Player 2 score on row 1 */
+    draw_char(0, 1, (game->current_player == 1) ? '>' : ' ', 0);
+    draw_string(1, 1, "P2:", 0);
+    draw_number(4, 1, game->players[1].score, 0);
+    draw_string(8, 1, "        ", 0);  /* Clear trailing */
 }
 
 /* History entry structure (must match main.c) */
@@ -813,10 +818,10 @@ void draw_history(const HistoryEntry *hist, int count) {
 }
 
 /* Main display update - now with history instead of moves */
-void update_display(const GameState *game, const void *history, int history_count) {
+void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames) {
     wait_vblank();
     draw_board(&game->board);
-    draw_scores(game);
+    draw_scores(game, move_frames);
     draw_rack(&game->players[game->current_player].rack);
     draw_history((const HistoryEntry *)history, history_count);
 }
