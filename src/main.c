@@ -214,9 +214,6 @@ int main(void) {
                       kwg_data, &klv, &game.bag, &moves);
         last_move_frames = frame_counter - start_frames;
 
-        /* Update display */
-        update_display(&game, history, history_count, last_move_frames);
-
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
             Move *best = &moves.moves[0];
@@ -246,6 +243,9 @@ int main(void) {
             /* No legal moves - pass */
             game_pass(&game);
         }
+
+        /* Update display after move is played and added to history */
+        update_display(&game, history, history_count, last_move_frames);
     }
 
     /* Game over - show final state */
