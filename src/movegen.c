@@ -469,15 +469,17 @@ static void shadow_record(MoveGenState *gen) {
 
     if (equity > gen->highest_shadow_equity) {
 #if USE_SHADOW_DEBUG
-        /* Debug for specific turns */
-        if (shadow_debug_turn == 783) {
-            printf("T1202 SHADOW_RECORD: score=%d tiles_played=%d main=%d wm=%d perp=%d leave=%d equity=%d->%d\n",
+        /* Debug for specific anchor in T618: (13,9,V) means col=9, row=13 */
+        /* For vertical, current_row is the column being processed */
+        if (shadow_debug_turn == 618 && gen->dir == DIR_VERTICAL && gen->current_row == 9) {
+            printf("T618 SHADOW_RECORD(col9): score=%d tiles=%d main=%d wm=%d perp=%d leave=%d eq=%d->%d left=%d right=%d\n",
                    (int)score, gen->tiles_played,
                    (int)gen->shadow_mainword_restricted_score,
                    (int)gen->shadow_word_multiplier,
                    (int)gen->shadow_perpendicular_additional_score,
                    (int)(gen->klv ? get_best_leave_for_tiles_remaining(gen, gen->shadow_original_rack_total - gen->tiles_played) : 0),
-                   (int)gen->highest_shadow_equity, (int)equity);
+                   (int)gen->highest_shadow_equity, (int)equity,
+                   gen->shadow_left_col, gen->shadow_right_col);
         }
 #endif
         gen->highest_shadow_equity = equity;
@@ -502,7 +504,7 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique);
  */
 static void shadow_play_right(MoveGenState *gen, int is_unique) {
 #if USE_SHADOW_DEBUG
-    if (shadow_debug_turn == 783) {
+    if (shadow_debug_turn == 618) {
         int phys_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : gen->shadow_right_col;
         int phys_col = (gen->dir == DIR_HORIZONTAL) ? gen->shadow_right_col : gen->current_row;
         printf("T1202 PLAY_RIGHT_ENTRY: phys(%d,%d,%c) right_col=%d tiles_played=%d rack_total=%d main=%d\n",
@@ -556,7 +558,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         if (existing != EMPTY_SQUARE) {
             /* Play through existing tile - doesn't use a rack tile */
 #if USE_SHADOW_DEBUG
-            if (shadow_debug_turn == 783) {
+            if (shadow_debug_turn == 618) {
                 printf("T1202 PLAY_RIGHT_PLAYTHROUGH: col=%d letter=%d score=%d main=%d->%d\n",
                        gen->shadow_right_col, existing, get_tile_score(existing),
                        (int)gen->shadow_mainword_restricted_score,
@@ -582,7 +584,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
                 scan_col++;
             }
 #if USE_SHADOW_DEBUG
-            if (shadow_debug_turn == 783 && gen->shadow_mainword_restricted_score > pre_scan_main) {
+            if (shadow_debug_turn == 618 && gen->shadow_mainword_restricted_score > pre_scan_main) {
                 printf("T1202 PLAY_RIGHT_EXTEND: right_col=%d scan_col=%d main=%d->%d\n",
                        gen->shadow_right_col, scan_col,
                        (int)pre_scan_main, (int)gen->shadow_mainword_restricted_score);
@@ -684,7 +686,7 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
     int has_blank = gen->rack.counts[BLANK_TILE] > 0;
 
 #if USE_SHADOW_DEBUG
-    if (shadow_debug_turn == 783 && gen->shadow_left_col == 0 && gen->dir == DIR_HORIZONTAL && gen->current_row == 2) {
+    if (shadow_debug_turn == 618 && gen->shadow_left_col == 0 && gen->dir == DIR_HORIZONTAL && gen->current_row == 2) {
         printf("T1178 NONPLAY_LEFT_ENTRY: left_col=%d right_col=%d tiles_played=%d rack_total=%d\n",
                gen->shadow_left_col, gen->shadow_right_col, gen->tiles_played, gen->shadow_original_rack_total);
         printf("T1178   right_ext_set=0x%x rack_bits=0x%x has_blank=%d\n",
@@ -704,7 +706,7 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
             ? gen->right_ext_set
             : (gen->right_ext_set & gen->rack_bits);
 #if USE_SHADOW_DEBUG
-        if (shadow_debug_turn == 783 && gen->shadow_left_col == 0 && gen->dir == DIR_HORIZONTAL && gen->current_row == 2) {
+        if (shadow_debug_turn == 618 && gen->shadow_left_col == 0 && gen->dir == DIR_HORIZONTAL && gen->current_row == 2) {
             printf("T1178 NONPLAY_LEFT_LOOP: possible_right=0x%x\n", possible_right);
         }
 #endif
@@ -764,6 +766,13 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
         uint32_t possible_left = has_blank
             ? gen->left_ext_set
             : (gen->left_ext_set & gen->rack_bits);
+#if USE_SHADOW_DEBUG
+        if (shadow_debug_turn == 618 && gen->dir == DIR_VERTICAL && gen->current_row == 9 &&
+            gen->shadow_left_col >= 10 && gen->shadow_left_col <= 14) {
+            printf("T618 NONPLAY_LEFT_CHECK: left_col=%d tiles=%d possible_left=0x%x rack_bits=0x%x\n",
+                   gen->shadow_left_col, gen->tiles_played, possible_left, gen->rack_bits);
+        }
+#endif
         if (possible_left == 0) {
             return;
         }
@@ -780,6 +789,13 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
 
         CrossSet cross_set = gen->row_cross_sets[gen->shadow_left_col];
         possible_left &= cross_set;
+#if USE_SHADOW_DEBUG
+        if (shadow_debug_turn == 618 && gen->dir == DIR_VERTICAL && gen->current_row == 9 &&
+            gen->shadow_left_col >= 9 && gen->shadow_left_col <= 13) {
+            printf("T618 NONPLAY_LEFT_PLACE: left_col=%d tiles=%d cross_set=0x%x possible_left=0x%x\n",
+                   gen->shadow_left_col, gen->tiles_played, cross_set, possible_left);
+        }
+#endif
 
         if (!try_restrict_tile(gen, possible_left, letter_mult, word_mult,
                                gen->shadow_left_col)) {
@@ -948,10 +964,21 @@ static void shadow_start_nonplaythrough(MoveGenState *gen) {
     }
     gen->tiles_played++;
 
-    /* Before recording, scan right for adjacent playthrough tiles.
+    /* Before recording, scan both left and right for adjacent playthrough tiles.
      * These tiles are part of the word formed by placing the single tile.
      * Without this, we'd miss the playthroughs and record too low a bound. */
-    int scan_col = gen->shadow_left_col + 1;
+
+    /* Scan left for playthroughs */
+    int scan_col = gen->shadow_left_col - 1;
+    while (scan_col >= 0) {
+        MachineLetter ml = gen->row_letters[scan_col];
+        if (ml == EMPTY_SQUARE) break;
+        gen->shadow_mainword_restricted_score += get_tile_score(ml);
+        scan_col--;
+    }
+
+    /* Scan right for playthroughs */
+    scan_col = gen->shadow_left_col + 1;
     while (scan_col < BOARD_DIM) {
         MachineLetter ml = gen->row_letters[scan_col];
         if (ml == EMPTY_SQUARE) break;
@@ -1010,21 +1037,21 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
         entry_counts_sum += gen->rack.counts[ml];
     }
     /* Print for specific turns to reduce output */
-    if (shadow_debug_turn == 425 || shadow_debug_turn == 783) {
+    if (shadow_debug_turn == 425 || shadow_debug_turn == 618) {
         int phys_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : col;
         int phys_col = (gen->dir == DIR_HORIZONTAL) ? col : gen->current_row;
         uint32_t entry_rack_bits = build_rack_cross_set(&gen->rack);
         printf("T%d ANCHOR_ENTRY: phys(%d,%d,%c) total=%d counts=%d rack_bits=0x%x\n",
                shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
                entry_rack_total, entry_counts_sum, entry_rack_bits);
-        /* Print row_letters for anchor(2,2,H) in T783 */
-        if (shadow_debug_turn == 783 && phys_row == 2 && phys_col == 2 && gen->dir == DIR_HORIZONTAL) {
-            printf("T783   row_letters[0-14]: ");
+        /* Print row_letters for anchor(13,9,V) in T618 */
+        if (shadow_debug_turn == 618 && phys_row == 13 && phys_col == 9 && gen->dir == DIR_VERTICAL) {
+            printf("T618   row_letters[0-14]: ");
             for (int c = 0; c < BOARD_DIM; c++) {
                 printf("%d ", gen->row_letters[c]);
             }
             printf("\n");
-            printf("T783   cross_sets[0-14]: ");
+            printf("T618   cross_sets[0-14]: ");
             for (int c = 0; c < BOARD_DIM; c++) {
                 printf("0x%x ", gen->row_cross_sets[c]);
             }
@@ -1086,6 +1113,11 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
                "rack_bits=0x%x has_blank=%d has_left=%d rack_total=%d\n",
                shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
                current_letter, cs, gen->rack_bits, has_blank, has_left, gen->rack.total);
+    }
+    /* Debug: print final bound for specific anchor */
+    if (shadow_debug_turn == 618 && gen->dir == DIR_VERTICAL && gen->current_row == 9 && col == 13) {
+        printf("T618 ANCHOR_FINAL_BOUND: phys(13,9,V) highest_equity=%d highest_score=%d\n",
+               (int)gen->highest_shadow_equity, (int)gen->highest_shadow_score);
     }
 #endif
 }
