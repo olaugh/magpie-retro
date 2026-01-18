@@ -173,15 +173,16 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             int suffix_len = 0;
 
             /* Check vertical neighbors for horizontal cross-set */
+            /* Keep blank flag intact so compute_cross_set can score blanks as 0 */
             for (int r = row - 1; r >= 0; r--) {
                 MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
                 if (ml == EMPTY_SQUARE) break;
-                prefix[prefix_len++] = UNBLANKED(ml);
+                prefix[prefix_len++] = ml;
             }
             for (int r = row + 1; r < BOARD_DIM; r++) {
                 MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
                 if (ml == EMPTY_SQUARE) break;
-                suffix[suffix_len++] = UNBLANKED(ml);
+                suffix[suffix_len++] = ml;
             }
 
             if (prefix_len == 0 && suffix_len == 0) {
@@ -204,15 +205,16 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             prefix_len = 0;
             suffix_len = 0;
 
+            /* Keep blank flag intact so compute_cross_set can score blanks as 0 */
             for (int c = col - 1; c >= 0; c--) {
                 MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
                 if (ml == EMPTY_SQUARE) break;
-                prefix[prefix_len++] = UNBLANKED(ml);
+                prefix[prefix_len++] = ml;
             }
             for (int c = col + 1; c < BOARD_DIM; c++) {
                 MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
                 if (ml == EMPTY_SQUARE) break;
-                suffix[suffix_len++] = UNBLANKED(ml);
+                suffix[suffix_len++] = ml;
             }
 
             if (prefix_len == 0 && suffix_len == 0) {

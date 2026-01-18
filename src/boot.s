@@ -135,31 +135,34 @@ init_vdp_loop:
     move.w  (%a0)+, (%a1)
     dbra    %d0, init_vdp_loop
 
-    | Clear VRAM
+    | Clear VRAM (use move.w #0 instead of clr.w to avoid read-modify-write)
     move.l  #0x40000000, 0xC00004   | VRAM write to 0x0000
     move.w  #0x7FFF, %d0
     lea     0xC00000, %a0
 clear_vram:
-    clr.w   (%a0)
+    move.w  #0, (%a0)
     dbra    %d0, clear_vram
 
     | Clear CRAM (palette)
     move.l  #0xC0000000, 0xC00004   | CRAM write to 0x0000
     moveq   #31, %d0
 clear_cram:
-    clr.w   (%a0)
+    move.w  #0, (%a0)
     dbra    %d0, clear_cram
 
     | Clear VSRAM
     move.l  #0x40000010, 0xC00004   | VSRAM write to 0x0000
     moveq   #19, %d0
 clear_vsram:
-    clr.w   (%a0)
+    move.w  #0, (%a0)
     dbra    %d0, clear_vsram
 
     | Set background to blue as debug indicator
     move.l  #0xC0000000, 0xC00004   | CRAM write address 0
     move.w  #0x0E00, 0xC00000       | Blue color
+
+    | Reset VDP command state by reading status (clears write-pending flag)
+    move.w  0xC00004, %d0
 
     | Enable display and VBlank interrupt
     move.w  #0x8174, 0xC00004

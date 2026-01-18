@@ -17,7 +17,7 @@ BUILD_DIR = build
 OUT_DIR = out
 
 # Magpie data path
-MAGPIE_DATA = /Users/olaugh/sources/jan14-magpie/MAGPIE/data/lexica
+MAGPIE_DATA = data/lexica
 
 # Source files
 C_SOURCES = $(wildcard $(SRC_DIR)/*.c)
