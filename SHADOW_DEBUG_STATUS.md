@@ -2,19 +2,19 @@
 
 ## Current State
 
-The shadow algorithm computes upper bounds on equity for each anchor position, enabling early cutoff when remaining anchors can't beat the current best move. This document tracks the debugging progress.
+**All bad cutoffs resolved: 35 → 0**
 
-**Bad cutoffs reduced: 35 → 2**
+The shadow algorithm now correctly computes upper bounds on equity for each anchor position, enabling early cutoff when remaining anchors can't beat the current best move.
 
 ## Fixes Applied
 
 ### 1. Single-tile word multiplier bug
 In `shadow_start_nonplaythrough`, the word multiplier was set to 0 before `shadow_record` was called, causing single-tile plays to score 0. Fixed by setting `shadow_word_multiplier = word_mult` before the record call.
 
-### 2. Adjacent rightward playthroughs in shadow_start_nonplaythrough
+### 2. Adjacent playthroughs in shadow_start_nonplaythrough (RIGHT only - partial fix)
 When placing a single tile at an anchor, adjacent tiles to the right (playthroughs) were not being included in the main word score. Added a scan-right loop before `shadow_record` to accumulate playthrough tile scores.
 
-### 3. Leftward playthrough detection
+### 3. Leftward playthrough detection in extend-left functions
 Both `nonplaythrough_shadow_play_left` and `playthrough_shadow_play_left` had a bug where they treated occupied squares as empty squares needing tile placement. When the cross_set at an occupied position was 0 (correctly indicating no tile can be placed), the functions would exit early instead of recognizing the position as a playthrough.
 
 Fixed by adding a check at the start of each left-extension iteration:
@@ -28,51 +28,45 @@ if (left_ml != EMPTY_SQUARE) {
 }
 ```
 
-## Remaining Bad Cutoffs (2)
+### 4. Adjacent playthroughs in shadow_start_nonplaythrough (BOTH directions - complete fix)
+The partial fix (#2) only scanned right, but playthroughs can also be on the left of the anchor. For example, with board layout `O_A` (O at left, empty anchor in middle, A at right), placing a tile forms word `O-tile-A`. The main word score must include both O and A.
 
-### T618: anchor(13,9,V)
-- bound=178, before=182, after=183
-- actual_leave=103
-- best_leaves=[68,90,103,103,-32767,-32767,-32767]
-- bag=0 (endgame)
-- Difference: 5 equity points (183-178)
+Fixed by scanning both left AND right before recording the single-tile play:
+```c
+/* Scan left for playthroughs */
+int scan_col = gen->shadow_left_col - 1;
+while (scan_col >= 0) {
+    MachineLetter ml = gen->row_letters[scan_col];
+    if (ml == EMPTY_SQUARE) break;
+    gen->shadow_mainword_restricted_score += get_tile_score(ml);
+    scan_col--;
+}
 
-### T976: anchor(14,1,V)
-- bound=224, before=232, after=240
-- actual_leave=195
-- best_leaves=[68,90,135,176,195,-32767,-32767]
-- bag=0 (endgame)
-- Difference: 16 equity points (240-224)
-
-Both are **vertical anchors** at edge positions (row 13/14).
-
-## Hypotheses for Remaining Issues
-
-### 1. Vertical-specific playthrough handling
-The fixes applied affect horizontal processing. Vertical anchors use the same functions but with transposed coordinates. There may be an issue with how row_letters is set up for vertical processing, or the playthrough detection may have edge cases specific to vertical moves.
-
-### 2. Edge position handling
-Both anchors are near board edges (row 13 and 14). There could be boundary condition issues when extending playthroughs near the bottom of the board.
-
-### 3. Leave value calculation
-The differences are small (5 and 16 equity points). This could indicate an issue with leave value lookup for specific tile counts, or the best_leaves array not being properly updated for certain move configurations.
-
-## Suggested Next Steps
-
-1. **Add debug output for T618 and T976** - Change `shadow_debug_turn` to 618 or 976 and trace through the vertical anchor processing to see where the bound falls short.
-
-2. **Compare row_letters setup** - Verify that when processing vertical anchors, the transposed row_letters contains the correct tile positions.
-
-3. **Check playthrough detection for vertical** - Ensure the leftward/rightward playthrough fixes work correctly when dir=DIR_VERTICAL (coordinates are transposed).
-
-4. **Verify leave calculation** - The small differences might indicate leave value issues rather than score calculation issues. Check if `get_best_leave_for_tiles_remaining` returns correct values for these cases.
+/* Scan right for playthroughs */
+scan_col = gen->shadow_left_col + 1;
+while (scan_col < BOARD_DIM) {
+    MachineLetter ml = gen->row_letters[scan_col];
+    if (ml == EMPTY_SQUARE) break;
+    gen->shadow_mainword_restricted_score += get_tile_score(ml);
+    scan_col++;
+}
+```
 
 ## Testing
 
-Run the shadow debug build:
+Run the shadow debug build to verify no bad cutoffs:
 ```bash
 make batch-shadow-debug
-./build/batch-nwl23-shadow-debug/test_batch 1 60 2>&1 | grep BAD_CUTOFF
+./build/batch-nwl23-shadow-debug/test_batch 1 60 2>&1 | grep BAD_CUTOFF | wc -l
+# Should output: 0
 ```
 
-To debug a specific turn, modify `shadow_debug_turn` in movegen.c and look for the anchor in question.
+## Summary
+
+The shadow algorithm issues were all related to not properly accounting for playthrough tiles (existing tiles on the board that become part of a word when new tiles are placed adjacent to them):
+
+1. Single-tile plays weren't scanning for adjacent playthroughs at all initially
+2. The scan was added for right-side only, missing left-side playthroughs
+3. The extend-left functions weren't recognizing existing tiles as playthroughs
+
+All issues are now fixed and the shadow algorithm correctly computes upper bounds.
