@@ -25,7 +25,7 @@ typedef struct {
     int8_t row;                  /* Row (0-14) or col for vertical */
     int8_t col;                  /* Column within row */
     uint8_t dir;                 /* DIR_HORIZONTAL or DIR_VERTICAL */
-    uint8_t pad;                 /* Alignment padding */
+    uint8_t last_anchor_col;     /* Last anchor col when this anchor was created */
     Equity highest_possible_equity;  /* Upper bound on equity from this anchor */
     int16_t highest_possible_score;  /* Upper bound on score (for tiebreaking) */
     uint16_t scan_order;         /* Original scan order for tiebreaking */

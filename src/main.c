@@ -43,6 +43,41 @@ extern void generate_moves(const Board *board, const Rack *rack, const uint32_t 
                            const KLV *klv, const Bag *bag, MoveList *moves);
 extern void sort_moves_by_score(MoveList *moves);
 
+/* Debug globals from movegen.c */
+extern volatile uint16_t debug_anchors_total;
+extern volatile uint16_t debug_anchors_processed;
+extern volatile uint16_t debug_wair_anchor_exists;
+extern volatile int16_t debug_wair_shadow_equity;
+extern volatile uint16_t debug_wair_anchor_popped;
+extern volatile int16_t debug_wair_best_after;
+extern volatile int16_t debug_cutoff_best;
+extern volatile int16_t debug_cutoff_anchor;
+extern volatile int16_t debug_first_popped_equity;
+extern volatile int16_t debug_heap_max_equity;
+extern volatile uint16_t debug_l9_heap_index;
+extern volatile int16_t debug_l9_equity_after_insert;
+extern volatile uint16_t debug_l9_insert_index;
+extern volatile int16_t debug_l9_equity_before_insert;
+extern volatile uint16_t debug_anchor_size;
+extern volatile int16_t debug_gen_equity_at_assign;
+extern volatile uint16_t debug_l9_right_extent;
+extern volatile uint16_t debug_l9_cross_set_m9;
+/* Debug for shadow_record calculation at L9 */
+extern volatile uint16_t debug_l9_tiles_played;
+extern volatile uint16_t debug_l9_num_unrestricted;
+extern volatile int16_t debug_l9_tiles_score;
+extern volatile int16_t debug_l9_main_score;
+extern volatile int16_t debug_l9_perp_score;
+extern volatile uint16_t debug_l9_word_mult;
+extern volatile int16_t debug_l9_final_score;
+extern volatile int16_t debug_l9_record_equity;
+extern volatile int8_t debug_l9_ts0, debug_l9_ts1, debug_l9_ts2, debug_l9_ts3;
+extern volatile uint16_t debug_l9_em0, debug_l9_em1, debug_l9_em2, debug_l9_em3;
+extern volatile uint16_t debug_l9_record_count;
+extern volatile int16_t debug_l9_max_equity;
+extern volatile uint16_t debug_l9_is_playthrough;
+extern volatile int16_t debug_l9_equity_after_shadow;
+
 /* Frame counter (from boot.s vblank interrupt) */
 extern volatile uint32_t frame_counter;
 
@@ -251,11 +286,21 @@ new_game:
             if (best->dir == 0xFF) {
                 /* Exchange tiles */
                 if (game_exchange(&game, best->tiles, best->tiles_played)) {
-                    /* Add exchange to history */
+                    /* Add exchange to history as "-ABCDEF" */
                     HistoryEntry *h = &history[history_count < MAX_HISTORY ? history_count++ : MAX_HISTORY - 1];
-                    h->word[0] = 'X';
-                    h->word[1] = best->tiles_played + '0';
-                    h->word[2] = '\0';
+                    h->word[0] = '-';
+                    int len = best->tiles_played;
+                    if (len > 14) len = 14;  /* Leave room for '-' and null */
+                    for (int i = 0; i < len; i++) {
+                        MachineLetter ml = best->tiles[i];
+                        uint8_t letter = UNBLANKED(ml);
+                        if (letter >= 1 && letter <= 26) {
+                            h->word[1 + i] = 'A' + (letter - 1);
+                        } else {
+                            h->word[1 + i] = '?';  /* Blank */
+                        }
+                    }
+                    h->word[1 + len] = '\0';
                     h->blanks = 0;
                     h->score = 0;
                     h->equity = best->equity;

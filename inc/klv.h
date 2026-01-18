@@ -6,9 +6,6 @@
  *   - KWG nodes (uint32_t[] LE) - DAWG for leave indexing
  *   - Number of leaves (uint32_t LE)
  *   - Leave values (int16_t[] LE) - in eighths of a point
- *
- * Equity is stored as int16_t representing eighths of a point.
- * This gives a range of -4095.875 to +4095.875 points with 0.125 precision.
  */
 
 #ifndef KLV_H
@@ -16,13 +13,7 @@
 
 #include <stdint.h>
 #include "scrabble.h"
-
-/* Equity type: 16-bit signed, in eighths of a point */
-typedef int16_t Equity;
-
-/* Convert points to equity (eighths) */
-#define POINTS_TO_EQUITY(pts) ((Equity)((pts) * 8))
-#define EQUITY_TO_POINTS(eq) ((eq) / 8)
+#include "equity.h"
 
 /* Sentinel for unfound leave index */
 #define KLV_UNFOUND_INDEX 0xFFFFFFFF
@@ -50,6 +41,7 @@ typedef struct KLV KLV;
 
 typedef struct {
     Equity leave_values[LEAVE_MAP_SIZE];    /* Pre-computed leave values */
+    Equity best_leaves[RACK_SIZE + 1];      /* Max leave value by size */
     uint8_t letter_base_index[ALPHABET_SIZE]; /* Base bit index for each letter */
     uint8_t reversed_bit_map[RACK_SIZE];    /* For complement indexing */
     uint8_t current_index;                   /* Current bitmask index */

@@ -240,7 +240,14 @@ Equity klv_get_leave_value(const KLV *klv, const Rack *rack) {
 static void populate_leave_values(LeaveMap *lm, const KLV *klv,
                                    Rack *temp_rack, MachineLetter start_ml) {
     /* Store leave value for current subset */
-    lm->leave_values[lm->current_index] = klv_get_leave_value(klv, temp_rack);
+    Equity value = klv_get_leave_value(klv, temp_rack);
+    lm->leave_values[lm->current_index] = value;
+
+    /* Track best leave for this size */
+    uint8_t leave_size = temp_rack->total;
+    if (value > lm->best_leaves[leave_size]) {
+        lm->best_leaves[leave_size] = value;
+    }
 
     /* Try adding each remaining letter */
     for (MachineLetter ml = start_ml; ml < ALPHABET_SIZE; ml++) {
@@ -290,6 +297,11 @@ void leave_map_init(LeaveMap *lm, const KLV *klv, const Rack *rack) {
 
     lm->rack_size = rack->total;
     lm->current_index = (1 << rack->total) - 1;  /* All bits set */
+
+    /* Initialize best_leaves to minimum value */
+    for (int i = 0; i <= RACK_SIZE; i++) {
+        lm->best_leaves[i] = -32767;
+    }
 
     /* Populate leave values for all subsets */
     Rack temp_rack;

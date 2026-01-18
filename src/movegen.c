@@ -26,6 +26,32 @@
 #define USE_SHADOW 1
 #endif
 
+/* Debug mode for tracking bad shadow cutoffs */
+#ifndef USE_SHADOW_DEBUG
+#define USE_SHADOW_DEBUG 0
+#endif
+
+#if USE_SHADOW_DEBUG
+/* Info about a bad cutoff for debugging */
+typedef struct {
+    int row;
+    int col;
+    int dir;
+    Equity bound;
+    Equity best_before;
+    Equity best_after;
+} BadCutoffInfo;
+
+/* Global debug counters (accessible from test harness) */
+int shadow_debug_bad_cutoff_count = 0;
+BadCutoffInfo shadow_debug_last_bad_cutoff = {0};
+int shadow_debug_record_calls = 0;
+int shadow_debug_leave_added = 0;
+
+/* Declaration for printf when building native debug */
+extern int printf(const char *fmt, ...);
+#endif
+
 /* From libc.c */
 extern void *memset(void *s, int c, unsigned long n);
 extern void *memcpy(void *dest, const void *src, unsigned long n);
@@ -122,6 +148,11 @@ typedef struct {
 
     /* Original rack total for shadow tile limit checks */
     uint8_t shadow_original_rack_total;
+
+    /* Best leave values seen for each leave size (for shadow upper bound).
+     * Index 0 = best 1-tile leave, index 6 = best 7-tile leave.
+     * Updated during move generation, used by shadow_record. */
+    Equity best_leaves[RACK_SIZE];
 } MoveGenState;
 
 /* Tile scores for calculating move scores */
@@ -343,6 +374,7 @@ static void insert_unrestricted_multipliers(MoveGenState *gen, int col) {
 /*
  * Try to restrict a tile to a single letter.
  * If only one tile can go here, remove it from rack and add its score.
+ * If we don't have the letter but have a blank, use the blank (score 0).
  * Returns 1 if restricted, 0 if unrestricted.
  */
 static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
@@ -352,17 +384,30 @@ static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
     }
 
     MachineLetter ml = get_lowest_bit_index(possible_tiles);
+    int8_t score;
 
-    /* Remove from rack */
-    gen->rack.counts[ml]--;
-    gen->rack.total--;
-
-    /* Update rack cross set if we used the last of this tile */
-    if (gen->rack.counts[ml] == 0) {
-        gen->rack_bits &= ~(1U << ml);
+    /* Check if we have this letter, or need to use a blank */
+    if (gen->rack.counts[ml] > 0) {
+        /* Have the letter - use it */
+        gen->rack.counts[ml]--;
+        gen->rack.total--;
+        if (gen->rack.counts[ml] == 0) {
+            gen->rack_bits &= ~(1U << ml);
+        }
+        score = tile_scores[ml];
+    } else if (gen->rack.counts[BLANK_TILE] > 0) {
+        /* Use blank as this letter */
+        gen->rack.counts[BLANK_TILE]--;
+        gen->rack.total--;
+        if (gen->rack.counts[BLANK_TILE] == 0) {
+            gen->rack_bits &= ~(1U << BLANK_TILE);
+        }
+        score = 0;  /* Blank scores 0 */
+    } else {
+        /* Can't play here - shouldn't happen if possible_tiles was computed correctly */
+        return 0;
     }
 
-    int8_t score = tile_scores[ml];
     remove_score_from_descending(gen, score);
 
     int16_t lsm = score * letter_mult;
@@ -376,24 +421,24 @@ static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
     return 1;
 }
 
-/* Get best leave value for a given number of tiles remaining */
+/* Get best leave value for a given number of tiles remaining.
+ * Uses the best_leaves array which is updated during move generation. */
 static Equity get_best_leave_for_tiles_remaining(const MoveGenState *gen, int tiles_remaining) {
     if (tiles_remaining <= 0 || tiles_remaining > RACK_SIZE) {
         return 0;
     }
-    /* Use the leave map's precomputed values - this is an approximation */
-    /* In full Magpie, best_leaves[n] tracks the best leave of size n seen */
-    /* For simplicity, we'll use the current leave value as upper bound */
-    return leave_map_get_current(&gen->leave_map);
+    /* best_leaves is 0-indexed: index 0 = 1-tile leave, index 6 = 7-tile leave */
+    return gen->best_leaves[tiles_remaining - 1];
 }
 
 /*
  * Record shadow score - updates highest_shadow_equity/score if this is better
  */
 static void shadow_record(MoveGenState *gen) {
-    /* Compute upper bound score */
+    /* Compute upper bound score: pair highest tiles with highest multipliers.
+     * Loop over all RACK_SIZE positions - unexplored positions have multiplier 0. */
     Equity tiles_played_score = 0;
-    for (int i = 0; i < gen->tiles_played && i < gen->num_unrestricted_multipliers; i++) {
+    for (int i = 0; i < RACK_SIZE; i++) {
         tiles_played_score += gen->descending_tile_scores[i] *
                               gen->descending_effective_letter_multipliers[i];
     }
@@ -404,15 +449,30 @@ static void shadow_record(MoveGenState *gen) {
                    (gen->shadow_mainword_restricted_score * gen->shadow_word_multiplier) +
                    gen->shadow_perpendicular_additional_score + bingo_bonus;
 
-    /* For equity, add best possible leave value */
+    /* For equity, add best possible leave value.
+     * Match actual move generation: add leave if KLV is available.
+     * (Original checked tiles_in_bag > 0, but actual gen doesn't) */
     Equity equity = score * 8;  /* Convert to eighths */
-    if (gen->klv != NULL && gen->tiles_in_bag > 0) {
-        int tiles_remaining = gen->rack.total;
-        equity += get_best_leave_for_tiles_remaining(gen, tiles_remaining);
+#if USE_SHADOW_DEBUG
+    shadow_debug_record_calls++;
+#endif
+    if (gen->klv != NULL) {
+        /* Compute leave size: original rack count minus tiles played */
+        int tiles_remaining = gen->shadow_original_rack_total - gen->tiles_played;
+        Equity leave = get_best_leave_for_tiles_remaining(gen, tiles_remaining);
+        equity += leave;
+#if USE_SHADOW_DEBUG
+        shadow_debug_leave_added++;
+#endif
     }
 
     if (equity > gen->highest_shadow_equity) {
         gen->highest_shadow_equity = equity;
+#if USE_SHADOW_DEBUG
+        /* Track when equity improves significantly */
+        static int update_count = 0;
+        update_count++;
+#endif
     }
     if (score > gen->highest_shadow_score) {
         gen->highest_shadow_score = score;
@@ -457,19 +517,23 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     /* Extend rightward */
     for (;;) {
         gen->shadow_right_col++;
-        gen->tiles_played++;
 
-        if (gen->shadow_right_col >= BOARD_DIM ||
-            gen->tiles_played > gen->shadow_original_rack_total) {
+        if (gen->shadow_right_col >= BOARD_DIM) {
             break;
         }
 
         /* Check if there's a playthrough tile first */
         MachineLetter existing = gen->row_letters[gen->shadow_right_col];
         if (existing != EMPTY_SQUARE) {
-            /* Play through existing tile */
+            /* Play through existing tile - doesn't use a rack tile */
             gen->shadow_mainword_restricted_score += get_tile_score(existing);
-            continue;  /* Keep going right */
+            continue;  /* Keep going right - no tile consumed */
+        }
+
+        /* Empty square - need a tile from rack */
+        gen->tiles_played++;
+        if (gen->tiles_played > gen->shadow_original_rack_total) {
+            break;
         }
 
         /* Empty square - check what can go here */
@@ -509,10 +573,10 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         }
 
         /* Record if valid play.
-         * Following original magpie logic:
-         * - Multi-tile plays (tiles_played > 1) are always recorded
-         * - Single-tile plays require is_unique to avoid duplicates */
-        if ((gen->tiles_played > 1) || (gen->tiles_played == 1 && is_unique)) {
+         * For shadow, always record - duplicate recordings are harmless
+         * (they just compare the same equity and update if better).
+         * The is_unique check is for actual move recording, not shadow bounds. */
+        if (gen->tiles_played >= 1) {
             /* Before recording, scan forward for adjacent playthroughs.
              * These MUST be part of the word if we stop here. */
             Equity saved_main = gen->shadow_mainword_restricted_score;
@@ -570,9 +634,11 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
         }
         gen->right_ext_set = TRIVIAL_CROSS_SET;
 
-        /* Check if we can extend left */
+        /* Check if we can extend left.
+         * Note: Don't use last_anchor_col restriction here.
+         * Actual move generation resets last_anchor_col = BOARD_DIM for each anchor,
+         * so shadow must also allow full left extension for accurate bounds. */
         if (gen->shadow_left_col == 0 ||
-            gen->shadow_left_col == gen->last_anchor_col + 1 ||
             gen->tiles_played >= gen->shadow_original_rack_total) {
             return;
         }
@@ -630,9 +696,9 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
             : (gen->left_ext_set & gen->rack_bits);
         gen->left_ext_set = TRIVIAL_CROSS_SET;
 
-        /* Check bounds */
+        /* Check bounds.
+         * Note: Don't use last_anchor_col restriction for same reason as above. */
         if (gen->shadow_left_col == 0 ||
-            gen->shadow_left_col == gen->last_anchor_col + 1 ||
             gen->tiles_played >= gen->shadow_original_rack_total) {
             break;
         }
@@ -673,10 +739,10 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
         }
 
         /* Record if valid play.
-         * Following original magpie logic:
-         * - Multi-tile plays (tiles_played > 1) are always recorded
-         * - Single-tile plays require is_unique to avoid duplicates */
-        if ((gen->tiles_played > 1) || (gen->tiles_played == 1 && is_unique)) {
+         * For shadow, always record - duplicate recordings are harmless
+         * (they just compare the same equity and update if better).
+         * The is_unique check is for actual move recording, not shadow bounds. */
+        if (gen->tiles_played >= 1) {
             maybe_recalc_effective_multipliers(gen);
             shadow_record(gen);
         }
@@ -715,10 +781,10 @@ static void shadow_start_nonplaythrough(MoveGenState *gen) {
     }
     gen->tiles_played++;
 
-    /* Record single-tile play (only for horizontal - avoid duplicates) */
-    if (gen->dir == DIR_HORIZONTAL) {
-        shadow_record(gen);
-    }
+    /* Record single-tile play.
+     * For shadow, always record regardless of direction - duplicate recordings
+     * are harmless. The direction-based dedup is for actual move recording. */
+    shadow_record(gen);
 
     gen->shadow_word_multiplier = word_mult;
     maybe_recalc_effective_multipliers(gen);
@@ -734,8 +800,8 @@ static void shadow_start_playthrough(MoveGenState *gen, MachineLetter current_le
     for (;;) {
         gen->shadow_mainword_restricted_score += get_tile_score(current_letter);
 
-        if (gen->shadow_left_col == 0 ||
-            gen->shadow_left_col == gen->last_anchor_col + 1) {
+        /* Note: Don't use last_anchor_col restriction for same reason as above. */
+        if (gen->shadow_left_col == 0) {
             break;
         }
 
@@ -767,8 +833,16 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     gen->num_unrestricted_multipliers = 0;
     gen->last_word_multiplier = 1;
 
-    gen->highest_shadow_equity = -32767;
-    gen->highest_shadow_score = -32767;
+    /* Zero effective multipliers - unexplored positions contribute 0 to score */
+    memset(gen->descending_effective_letter_multipliers, 0,
+           sizeof(gen->descending_effective_letter_multipliers));
+
+    /* Initialize to 0, not EQUITY_INITIAL_VALUE.
+     * Original magpie does this - if shadow_record is never called
+     * (e.g., vertical anchor with no valid extensions), we want
+     * a reasonable lower bound (0) not a sentinel that triggers cutoff. */
+    gen->highest_shadow_equity = 0;
+    gen->highest_shadow_score = 0;
 
     /* Reset extension sets to trivial */
     gen->left_ext_set = TRIVIAL_CROSS_SET;
@@ -809,26 +883,32 @@ static void gen_shadow(MoveGenState *gen) {
             gen->last_anchor_col = BOARD_DIM;  /* Sentinel */
 
             for (int col = 0; col < BOARD_DIM; col++) {
+                /* Only process anchors (empty squares adjacent to tiles).
+                 * Shadow handles playthrough tiles by extending from adjacent anchors,
+                 * same as actual move generation. */
                 if (!is_anchor(gen, col)) continue;
 
-                /* Restore rack for each anchor */
-                /* (shadow_play_for_anchor may modify it) */
+                /* Save state that shadow_play_for_anchor may modify */
                 Rack saved_rack;
                 memcpy(&saved_rack, &gen->rack, sizeof(Rack));
+                int8_t saved_scores[RACK_SIZE];
+                memcpy(saved_scores, gen->descending_tile_scores, sizeof(saved_scores));
 
                 shadow_play_for_anchor(gen, col);
 
-                /* Restore rack */
+                /* Restore state */
                 memcpy(&gen->rack, &saved_rack, sizeof(Rack));
+                memcpy(gen->descending_tile_scores, saved_scores, sizeof(saved_scores));
 
                 /* Add ALL anchors to heap (even with low equity).
                  * The shadow algorithm may underestimate equity for some positions,
-                 * so we must not skip any anchors based on shadow equity. */
+                 * so we must not skip any anchors based on shadow equity.
+                 * Store current last_anchor_col so move gen uses same left boundary. */
                 Anchor anchor;
                 anchor.row = (dir == DIR_HORIZONTAL) ? row : col;
                 anchor.col = (dir == DIR_HORIZONTAL) ? col : row;
                 anchor.dir = dir;
-                anchor.pad = 0;
+                anchor.last_anchor_col = gen->last_anchor_col;  /* Store for move gen */
                 anchor.highest_possible_equity = gen->highest_shadow_equity;
                 anchor.highest_possible_score = gen->highest_shadow_score;
                 /* scan_order matches original non-shadow processing order:
@@ -840,6 +920,7 @@ static void gen_shadow(MoveGenState *gen) {
 
                 anchor_heap_insert(&gen->anchor_heap, &anchor);
 
+                /* Update for next anchor: stop left extension before current anchor */
                 gen->last_anchor_col = col;
             }
         }
@@ -871,7 +952,7 @@ static int is_better_move(Equity new_equity, int16_t new_score,
     Move *best = gen->best_move;
 
     /* First move always wins */
-    if (gen->best_equity == -32767) return 1;
+    if (gen->best_equity == EQUITY_INITIAL_VALUE) return 1;
 
     /* Compare equity */
     if (new_equity != gen->best_equity) {
@@ -1253,7 +1334,10 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
             gen->row_cross_scores[col] = sq->cross_score_v;
         }
 
-        /* Compute anchor status: empty square adjacent to a tile */
+        /* Compute anchor status: empty square adjacent to a tile.
+         * Note: Non-empty squares are NOT marked as anchors here because the
+         * recursive algorithm handles playthroughs by extending from adjacent anchors.
+         * The shadow algorithm has separate logic to handle playthrough anchors. */
         gen->row_is_anchor[col] = 0;
         if (sq->letter == EMPTY_SQUARE) {
             /* Check all 4 neighbors */
@@ -1321,7 +1405,7 @@ static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
     Rack temp_rack;
     memcpy(&temp_rack, &gen->rack, sizeof(Rack));
 
-    *best_exchange_equity = -32767;  /* Start with very low equity */
+    *best_exchange_equity = EQUITY_INITIAL_VALUE;  /* Start with very low equity */
 
     /* Use bitmask to enumerate all subsets of the rack */
     uint8_t rack_size = gen->rack.total;
@@ -1403,7 +1487,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
     /* Use first slot in moves array as best_move storage */
     gen.best_move = &moves->moves[0];
-    gen.best_equity = -32767;  /* Start with minimum equity */
+    gen.best_equity = EQUITY_INITIAL_VALUE;  /* Start with minimum equity */
     gen.move_count = 0;
 
     /* Reset recursion counter */
@@ -1415,6 +1499,16 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     /* Initialize leave map if KLV is available */
     if (klv != NULL) {
         leave_map_init(&gen.leave_map, klv, rack);
+        /* Copy best_leaves from LeaveMap to MoveGenState for shadow algorithm.
+         * LeaveMap uses index N for N-tile leave, MoveGenState uses N-1. */
+        for (int i = 1; i <= RACK_SIZE; i++) {
+            gen.best_leaves[i - 1] = gen.leave_map.best_leaves[i];
+        }
+    } else {
+        /* No KLV - initialize best_leaves to 0 */
+        for (int i = 0; i < RACK_SIZE; i++) {
+            gen.best_leaves[i] = 0;
+        }
     }
 
 #if USE_SHADOW
@@ -1435,16 +1529,16 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         Anchor anchor;
         anchor_heap_extract_max(&gen.anchor_heap, &anchor);
 
-        /* Cutoff disabled: shadow equity bounds are sometimes too low, causing
-         * good moves to be missed. Without cutoff, shadow mode processes all
-         * anchors (same as noshadow) but in best-first order. This is correct
-         * but doesn't provide the speed benefit of early cutoff. */
-        #if 0
-        if (gen.best_equity > -32767 &&
+        /* Early cutoff: if best anchor's upper bound can't beat current best, stop */
+#if 0  /* DISABLED - use debug mode below */
+        if (gen.best_equity > EQUITY_INITIAL_VALUE &&
             anchor.highest_possible_equity < gen.best_equity) {
             break;
         }
-        #endif
+#endif
+#if USE_SHADOW_DEBUG
+        Equity equity_before = gen.best_equity;
+#endif
 
         /* Cache row if different from current */
         int row = (anchor.dir == DIR_HORIZONTAL) ? anchor.row : anchor.col;
@@ -1453,17 +1547,15 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
             cached_row = row;
             cached_dir = anchor.dir;
         }
-        /* Always reset last_anchor_col to allow full left extension.
-         * In shadow mode, anchors are processed in heap (equity) order,
-         * not column order, so the last_anchor_col optimization doesn't apply. */
-        gen.last_anchor_col = BOARD_DIM;
+        /* Restore last_anchor_col from anchor to use same left boundary as non-shadow.
+         * This prevents duplicate moves and ensures consistent results. */
+        gen.last_anchor_col = anchor.last_anchor_col;
 
         /* Show progress */
         show_progress(row, anchor.dir);
 
-        /* Reset leave map for this anchor */
+        /* Reinitialize leave map for this anchor */
         if (klv != NULL) {
-            /* Reinitialize to start fresh for each anchor */
             leave_map_init(&gen.leave_map, klv, rack);
         }
 
@@ -1473,6 +1565,34 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Generate moves for this anchor */
         int anchor_col = (anchor.dir == DIR_HORIZONTAL) ? anchor.col : anchor.row;
         gen_for_anchor(&gen, anchor_col);
+
+#if USE_SHADOW_DEBUG
+        /* If cutoff would have fired but this anchor found better move */
+        if (equity_before > EQUITY_INITIAL_VALUE &&
+            anchor.highest_possible_equity < equity_before &&
+            gen.best_equity > equity_before) {
+            /* BAD CUTOFF: would have skipped anchor that found better move */
+            shadow_debug_bad_cutoff_count++;
+            shadow_debug_last_bad_cutoff = (BadCutoffInfo){
+                .row = anchor.row,
+                .col = anchor.col,
+                .dir = anchor.dir,
+                .bound = anchor.highest_possible_equity,
+                .best_before = equity_before,
+                .best_after = gen.best_equity
+            };
+            /* Print detailed info including best_leaves and actual leave */
+            Equity actual_leave = leave_map_get_current(&gen.leave_map);
+            printf("BAD_CUTOFF: anchor(%d,%d,%c) bound=%d before=%d after=%d "
+                   "actual_leave=%d best_leaves=[%d,%d,%d,%d,%d,%d,%d] bag=%d\n",
+                   anchor.row, anchor.col, anchor.dir ? 'V' : 'H',
+                   anchor.highest_possible_equity, equity_before, gen.best_equity,
+                   actual_leave,
+                   gen.best_leaves[0], gen.best_leaves[1], gen.best_leaves[2],
+                   gen.best_leaves[3], gen.best_leaves[4], gen.best_leaves[5],
+                   gen.best_leaves[6], gen.tiles_in_bag);
+        }
+#endif
     }
 #else
     /* Non-shadow mode: process rows in order (for validation) */
@@ -1499,7 +1619,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
     /* Generate exchange moves if no good play found or bag allows */
     Move best_exchange;
-    Equity best_exchange_equity = -32767;
+    Equity best_exchange_equity = EQUITY_INITIAL_VALUE;
     generate_exchange_moves(&gen, bag, &best_exchange, &best_exchange_equity);
 
     /* Compare best play vs best exchange */
@@ -1507,14 +1627,14 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Exchange is better than best play - unusual but possible */
         memcpy(&moves->moves[0], &best_exchange, sizeof(Move));
         gen.best_equity = best_exchange_equity;
-    } else if (gen.move_count == 0 && best_exchange_equity > -32767) {
+    } else if (gen.move_count == 0 && best_exchange_equity > EQUITY_INITIAL_VALUE) {
         /* No plays found, use exchange */
         memcpy(&moves->moves[0], &best_exchange, sizeof(Move));
         gen.best_equity = best_exchange_equity;
     }
 
     /* Set count: 0 if no moves found, 1 if best move found */
-    moves->count = (gen.best_equity > -32767) ? 1 : 0;
+    moves->count = (gen.best_equity > EQUITY_INITIAL_VALUE) ? 1 : 0;
 }
 
 /*

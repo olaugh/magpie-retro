@@ -238,3 +238,210 @@ data/CSW24.klv16:
 
 # Regenerate all KLV16 files
 klv16: data/NWL23.klv16 data/CSW24.klv16
+
+#
+# Native test build with sanitizers
+#
+NATIVE_CC = clang
+NATIVE_CFLAGS = -g -O0 -Wall -Wextra -fsanitize=address,undefined -DUSE_SHADOW=1
+NATIVE_LDFLAGS = -fsanitize=address,undefined
+
+NATIVE_SOURCES = src/board.c src/game.c src/movegen.c src/klv.c src/kwg.c src/libc.c
+NATIVE_OBJECTS = $(patsubst src/%.c,build/native/%.o,$(NATIVE_SOURCES))
+
+build/native:
+	@mkdir -p $@
+
+build/native/%.o: src/%.c | build/native
+	$(NATIVE_CC) $(NATIVE_CFLAGS) -Iinc -c -o $@ $<
+
+build/native/kwg_data.o: build/nwl23-shadow/kwg_data.c | build/native
+	$(NATIVE_CC) $(NATIVE_CFLAGS) -Iinc -c -o $@ $<
+
+build/native/klv_data.o: build/nwl23-shadow/klv_data.c | build/native
+	$(NATIVE_CC) $(NATIVE_CFLAGS) -Iinc -c -o $@ $<
+
+build/native/test_native.o: test_native.c | build/native
+	$(NATIVE_CC) $(NATIVE_CFLAGS) -Iinc -c -o $@ $<
+
+test-native: nwl23-shadow build/native/test_native.o $(NATIVE_OBJECTS) build/native/kwg_data.o build/native/klv_data.o
+	$(NATIVE_CC) $(NATIVE_LDFLAGS) -o build/native/test_native \
+		build/native/test_native.o $(NATIVE_OBJECTS) \
+		build/native/kwg_data.o build/native/klv_data.o
+	@echo "Running native test with sanitizers..."
+	./build/native/test_native 8
+
+# Native test WITHOUT shadow
+NATIVE_NOSHADOW_CFLAGS = -g -O0 -Wall -Wextra -fsanitize=address,undefined -DUSE_SHADOW=0
+NATIVE_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/native-noshadow/%.o,$(NATIVE_SOURCES))
+
+build/native-noshadow:
+	@mkdir -p $@
+
+build/native-noshadow/%.o: src/%.c | build/native-noshadow
+	$(NATIVE_CC) $(NATIVE_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-noshadow/kwg_data.o: build/nwl23-noshadow/kwg_data.c | build/native-noshadow
+	$(NATIVE_CC) $(NATIVE_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-noshadow/klv_data.o: build/nwl23-noshadow/klv_data.c | build/native-noshadow
+	$(NATIVE_CC) $(NATIVE_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-noshadow/test_native.o: test_native.c | build/native-noshadow
+	$(NATIVE_CC) $(NATIVE_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+test-native-noshadow: nwl23-noshadow build/native-noshadow/test_native.o $(NATIVE_NOSHADOW_OBJECTS) build/native-noshadow/kwg_data.o build/native-noshadow/klv_data.o
+	$(NATIVE_CC) $(NATIVE_LDFLAGS) -o build/native-noshadow/test_native \
+		build/native-noshadow/test_native.o $(NATIVE_NOSHADOW_OBJECTS) \
+		build/native-noshadow/kwg_data.o build/native-noshadow/klv_data.o
+	@echo "Running native test (no shadow) with sanitizers..."
+	./build/native-noshadow/test_native 8
+
+# Optimized native test build (for timing)
+NATIVE_OPT_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=1
+
+NATIVE_OPT_OBJECTS = $(patsubst src/%.c,build/native-opt/%.o,$(NATIVE_SOURCES))
+
+build/native-opt:
+	@mkdir -p $@
+
+build/native-opt/%.o: src/%.c | build/native-opt
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt/kwg_data.o: build/nwl23-shadow/kwg_data.c | build/native-opt
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt/klv_data.o: build/nwl23-shadow/klv_data.c | build/native-opt
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt/test_native.o: test_native.c | build/native-opt
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+test-native-opt: nwl23-shadow build/native-opt/test_native.o $(NATIVE_OPT_OBJECTS) build/native-opt/kwg_data.o build/native-opt/klv_data.o
+	$(NATIVE_CC) -o build/native-opt/test_native \
+		build/native-opt/test_native.o $(NATIVE_OPT_OBJECTS) \
+		build/native-opt/kwg_data.o build/native-opt/klv_data.o
+	@echo "Running optimized native test..."
+	./build/native-opt/test_native 100
+
+# Optimized native test WITHOUT shadow (for timing comparison)
+NATIVE_OPT_NOSHADOW_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=0
+NATIVE_OPT_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/native-opt-noshadow/%.o,$(NATIVE_SOURCES))
+
+build/native-opt-noshadow:
+	@mkdir -p $@
+
+build/native-opt-noshadow/%.o: src/%.c | build/native-opt-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt-noshadow/kwg_data.o: build/nwl23-noshadow/kwg_data.c | build/native-opt-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt-noshadow/klv_data.o: build/nwl23-noshadow/klv_data.c | build/native-opt-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/native-opt-noshadow/test_native.o: test_native.c | build/native-opt-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+test-native-opt-noshadow: nwl23-noshadow build/native-opt-noshadow/test_native.o $(NATIVE_OPT_NOSHADOW_OBJECTS) build/native-opt-noshadow/kwg_data.o build/native-opt-noshadow/klv_data.o
+	$(NATIVE_CC) -o build/native-opt-noshadow/test_native \
+		build/native-opt-noshadow/test_native.o $(NATIVE_OPT_NOSHADOW_OBJECTS) \
+		build/native-opt-noshadow/kwg_data.o build/native-opt-noshadow/klv_data.o
+	@echo "Running optimized native test (no shadow)..."
+	./build/native-opt-noshadow/test_native 100
+
+#
+# Batch testing builds (for running many games)
+#
+
+# NWL23 shadow batch
+build/batch-nwl23-shadow:
+	@mkdir -p $@
+
+build/batch-nwl23-shadow/%.o: src/%.c | build/batch-nwl23-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-shadow/test_batch.o: test_batch.c | build/batch-nwl23-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-shadow/kwg_data.o: build/nwl23-shadow/kwg_data.c | build/batch-nwl23-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-shadow/klv_data.o: build/nwl23-shadow/klv_data.c | build/batch-nwl23-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_NWL23_SHADOW_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-shadow/%.o,$(NATIVE_SOURCES))
+
+build/batch-nwl23-shadow/test_batch: nwl23-shadow build/batch-nwl23-shadow/test_batch.o $(BATCH_NWL23_SHADOW_OBJECTS) build/batch-nwl23-shadow/kwg_data.o build/batch-nwl23-shadow/klv_data.o
+	$(NATIVE_CC) -o $@ build/batch-nwl23-shadow/test_batch.o $(BATCH_NWL23_SHADOW_OBJECTS) \
+		build/batch-nwl23-shadow/kwg_data.o build/batch-nwl23-shadow/klv_data.o
+
+# NWL23 noshadow batch
+build/batch-nwl23-noshadow:
+	@mkdir -p $@
+
+build/batch-nwl23-noshadow/%.o: src/%.c | build/batch-nwl23-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-noshadow/test_batch.o: test_batch.c | build/batch-nwl23-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-noshadow/kwg_data.o: build/nwl23-noshadow/kwg_data.c | build/batch-nwl23-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-noshadow/klv_data.o: build/nwl23-noshadow/klv_data.c | build/batch-nwl23-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_NWL23_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-noshadow/%.o,$(NATIVE_SOURCES))
+
+build/batch-nwl23-noshadow/test_batch: nwl23-noshadow build/batch-nwl23-noshadow/test_batch.o $(BATCH_NWL23_NOSHADOW_OBJECTS) build/batch-nwl23-noshadow/kwg_data.o build/batch-nwl23-noshadow/klv_data.o
+	$(NATIVE_CC) -o $@ build/batch-nwl23-noshadow/test_batch.o $(BATCH_NWL23_NOSHADOW_OBJECTS) \
+		build/batch-nwl23-noshadow/kwg_data.o build/batch-nwl23-noshadow/klv_data.o
+
+# CSW24 shadow batch
+build/batch-csw24-shadow:
+	@mkdir -p $@
+
+build/batch-csw24-shadow/%.o: src/%.c | build/batch-csw24-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-shadow/test_batch.o: test_batch.c | build/batch-csw24-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-shadow/kwg_data.o: build/csw24-shadow/kwg_data.c | build/batch-csw24-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-shadow/klv_data.o: build/csw24-shadow/klv_data.c | build/batch-csw24-shadow
+	$(NATIVE_CC) $(NATIVE_OPT_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_CSW24_SHADOW_OBJECTS = $(patsubst src/%.c,build/batch-csw24-shadow/%.o,$(NATIVE_SOURCES))
+
+build/batch-csw24-shadow/test_batch: csw24-shadow build/batch-csw24-shadow/test_batch.o $(BATCH_CSW24_SHADOW_OBJECTS) build/batch-csw24-shadow/kwg_data.o build/batch-csw24-shadow/klv_data.o
+	$(NATIVE_CC) -o $@ build/batch-csw24-shadow/test_batch.o $(BATCH_CSW24_SHADOW_OBJECTS) \
+		build/batch-csw24-shadow/kwg_data.o build/batch-csw24-shadow/klv_data.o
+
+# CSW24 noshadow batch
+build/batch-csw24-noshadow:
+	@mkdir -p $@
+
+build/batch-csw24-noshadow/%.o: src/%.c | build/batch-csw24-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-noshadow/test_batch.o: test_batch.c | build/batch-csw24-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-noshadow/kwg_data.o: build/csw24-noshadow/kwg_data.c | build/batch-csw24-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-csw24-noshadow/klv_data.o: build/csw24-noshadow/klv_data.c | build/batch-csw24-noshadow
+	$(NATIVE_CC) $(NATIVE_OPT_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_CSW24_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/batch-csw24-noshadow/%.o,$(NATIVE_SOURCES))
+
+build/batch-csw24-noshadow/test_batch: csw24-noshadow build/batch-csw24-noshadow/test_batch.o $(BATCH_CSW24_NOSHADOW_OBJECTS) build/batch-csw24-noshadow/kwg_data.o build/batch-csw24-noshadow/klv_data.o
+	$(NATIVE_CC) -o $@ build/batch-csw24-noshadow/test_batch.o $(BATCH_CSW24_NOSHADOW_OBJECTS) \
+		build/batch-csw24-noshadow/kwg_data.o build/batch-csw24-noshadow/klv_data.o
+
+# Build all batch test binaries
+batch-builds: build/batch-nwl23-shadow/test_batch build/batch-nwl23-noshadow/test_batch \
+              build/batch-csw24-shadow/test_batch build/batch-csw24-noshadow/test_batch
