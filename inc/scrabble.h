@@ -93,6 +93,7 @@ typedef struct {
     uint8_t tiles_played;
     uint8_t tiles_length;
     Score score;
+    int16_t equity;  /* Equity in eighths of a point (score*8 + leave_value) */
     MachineLetter tiles[MAX_MOVE_TILES];
 } Move;
 

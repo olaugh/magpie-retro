@@ -109,6 +109,7 @@ typedef struct {
     char word[16];     /* The word played (all uppercase) */
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
     int16_t score;
+    int16_t equity;    /* Equity in eighths of a point */
     uint8_t player;
 } HistoryEntry;
 
@@ -129,6 +130,7 @@ static void add_to_history(const Move *m, int player, const Board *board) {
 
     HistoryEntry *h = &history[history_count++];
     h->score = m->score;
+    h->equity = m->equity;
     h->player = player;
     h->blanks = 0;
 
@@ -256,6 +258,7 @@ new_game:
                     h->word[2] = '\0';
                     h->blanks = 0;
                     h->score = 0;
+                    h->equity = best->equity;
                     h->player = current;
                 }
             } else if (game_play_move(&game, best)) {

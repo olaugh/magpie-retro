@@ -789,6 +789,7 @@ typedef struct {
     char word[16];
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
     int16_t score;
+    int16_t equity;    /* Equity in eighths of a point */
     uint8_t player;
 } HistoryEntry;
 
@@ -811,9 +812,9 @@ void draw_history(const HistoryEntry *hist, int count) {
             const HistoryEntry *h = &hist[idx];
             /* Player indicator: > for P1, < for P2 */
             draw_char(HISTORY_COL, y, (h->player == 0) ? '>' : '<', 0);
-            /* Word (up to 10 chars to fit before score) */
+            /* Word (up to 8 chars to fit before score+equity) */
             int word_ended = 0;
-            for (int j = 0; j < 10; j++) {
+            for (int j = 0; j < 8; j++) {
                 char c = h->word[j];
                 if (word_ended || c == '\0') {
                     draw_char(HISTORY_COL + 1 + j, y, ' ', 0);
@@ -824,10 +825,13 @@ void draw_history(const HistoryEntry *hist, int count) {
                     draw_char(HISTORY_COL + 1 + j, y, c, pal);
                 }
             }
-            /* Score (columns 29-33) */
-            draw_number(HISTORY_COL + 11, y, h->score, 0);
+            /* Score (columns 27-30) */
+            draw_number(HISTORY_COL + 9, y, h->score, 0);
+            /* Space then equity in hex (columns 32-35) */
+            draw_char(HISTORY_COL + 13, y, ' ', 0);
+            draw_hex(HISTORY_COL + 14, y, (uint32_t)(uint16_t)h->equity, 0);
             /* Clear rest of line */
-            for (int j = HISTORY_COL + 15; j < 40; j++) {
+            for (int j = HISTORY_COL + 19; j < 40; j++) {
                 draw_char(j, y, ' ', 0);
             }
         } else {
