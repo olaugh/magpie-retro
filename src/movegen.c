@@ -1085,13 +1085,12 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     gen->highest_shadow_equity = 0;
     gen->highest_shadow_score = 0;
 
-    /* Reset extension sets to trivial.
-     * NOTE: Extension set filtering in shadow causes bad cutoffs due to
-     * incorrect semantics. The infrastructure is in place (row_leftx/row_rightx
-     * are cached) but proper integration requires matching the exact algorithm
-     * used in recursive_gen. Disabled for now until the semantics are fixed. */
-    gen->left_ext_set = TRIVIAL_CROSS_SET;
-    gen->right_ext_set = TRIVIAL_CROSS_SET;
+    /* Initialize extension sets from cached row data.
+     * - left_ext_set: front hooks for suffix (tiles to the right) = what can start extending LEFT
+     * - right_ext_set: back hooks for prefix (tiles to the left) = what can continue extending RIGHT
+     */
+    gen->left_ext_set = gen->row_leftx[col];
+    gen->right_ext_set = gen->row_rightx[col];
 
     /* Build rack cross set */
     gen->rack_bits = build_rack_cross_set(&gen->rack);

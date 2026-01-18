@@ -71,36 +71,41 @@ The shadow algorithm issues were all related to not properly accounting for play
 
 All issues are now fixed and the shadow algorithm correctly computes upper bounds.
 
-## Extension Set Infrastructure (In Progress)
+## Extension Set Integration (Complete)
 
-Added infrastructure for extension set (leftx/rightx) computation, which enables tighter filtering during move generation. This is used by the original magpie to reduce the search space.
+Extension sets (leftx/rightx) enable tighter filtering during move generation by restricting which letters can extend a word in each direction. This matches the algorithm used in the original magpie.
 
-### Completed Work
+### Implementation Details
 
-1. **Added extension set fields to Square structure** (`inc/scrabble.h`):
+1. **Extension set fields in Square structure** (`inc/scrabble.h`):
    - `leftx_h`, `rightx_h` - horizontal direction extension sets
    - `leftx_v`, `rightx_v` - vertical direction extension sets
 
-2. **Implemented extension set computation** (`src/kwg.c`):
-   - `compute_extension_sets()` function computes leftx and rightx for a position given adjacent tiles
-   - leftx (front hooks): Letters that can START a word ending in the suffix to the right
-   - rightx (back hooks): Letters that can CONTINUE a word starting with the prefix to the left
+2. **Extension set computation** (`src/kwg.c`):
+   - `compute_extension_sets()` computes leftx and rightx using GADDAG traversal
+   - **leftx (front hooks)**: Letters that can START a word - traverse reversed suffix in GADDAG, get letters DIRECTLY at node (NOT after separator)
+   - **rightx (back hooks)**: Letters that can CONTINUE a word - traverse reversed prefix in GADDAG, follow separator, get letters AFTER separator
+   - **Key insight from magpie**: leftx and rightx use DIFFERENT algorithms - leftx gets letters at node, rightx follows separator first
 
-3. **Updated board_update_cross_sets** (`src/board.c`):
-   - Computes extension sets alongside cross sets using the same neighbor tile data
+3. **Board cross-set computation** (`src/board.c`):
+   - `board_update_cross_sets()` computes extension sets alongside cross sets
 
-4. **Added row cache for extension sets** (`src/movegen.c`):
-   - `row_leftx[]` and `row_rightx[]` arrays in MoveGenState
+4. **Row cache** (`src/movegen.c`):
+   - `row_leftx[]` and `row_rightx[]` arrays cache extension sets for current row
    - `cache_row()` copies extension sets from board squares
 
-### Not Yet Implemented
-
-Extension set filtering in the shadow algorithm is not yet integrated. The infrastructure is in place (extension sets are computed and cached), but proper integration requires per-position filtering similar to how extension sets are used in real move generation.
-
-Current shadow algorithm uses `TRIVIAL_CROSS_SET` for extension sets, matching the original Genesis behavior before these changes.
+5. **Shadow algorithm integration** (`src/movegen.c`):
+   - `shadow_play_for_anchor()` initializes `left_ext_set` and `right_ext_set` from cached row data
+   - `shadow_play_right()` applies `right_ext_set` filter at first extension position
+   - `nonplaythrough_shadow_play_left()` and `playthrough_shadow_play_left()` apply `left_ext_set` filter
 
 ### Performance Notes
 
-With shadow cutoff enabled:
-- **Cutoff rate**: ~41% of anchors are cut off (skipped because their upper bound can't beat current best)
-- **Correctness**: All moves match between shadow and noshadow builds (verified across 100 random games)
+With shadow cutoff and extension set filtering enabled:
+- **Cutoff rate**: ~42.3% of anchors cut off (slight improvement from ~41% without extension filtering)
+- **Correctness**: Verified across 1000 random games with zero bad cutoffs
+- **Speed**: Shadow is ~20-25% slower than noshadow despite cutoffs (overhead exceeds savings)
+
+Timing comparison (100 games, NWL23):
+- noshadow: ~0.83s
+- shadow: ~1.03s

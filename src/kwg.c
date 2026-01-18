@@ -67,31 +67,48 @@ void compute_extension_sets(const uint32_t *kwg,
     *rightx = TRIVIAL_CROSS_SET;
 
     /* Compute rightx (back hooks) - letters that can follow left_tiles.
-     * Traverse DAWG through left_tiles, then get letter set at that node.
-     * These are letters L such that left_tiles + L is a valid word or prefix. */
+     * Use GADDAG: traverse reversed left_tiles, follow separator, get letters.
+     * These are letters L such that left_tiles + L is a valid word or prefix.
+     *
+     * GADDAG path: for tiles [A,B,C], we look up CBA^, then get letters after ^.
+     * Letters after separator are the suffix letters = what can follow the prefix.
+     */
     if (left_len > 0) {
-        uint32_t node_index = kwg_get_dawg_root(kwg);
+        uint32_t node_index = kwg_get_gaddag_root(kwg);
         int valid = 1;
-        for (int i = 0; i < left_len && valid; i++) {
+
+        /* Traverse reversed left_tiles through GADDAG */
+        for (int i = left_len - 1; i >= 0 && valid; i--) {
             node_index = kwg_follow_arc(kwg, node_index, UNBLANKED(left_tiles[i]));
             if (node_index == 0) valid = 0;
         }
+
+        /* Follow separator to get back hooks (suffix letters) */
         if (valid && node_index != 0) {
-            /* Get all letters that have arcs from this node (back extensions) */
-            uint32_t ext_set;
-            kwg_get_letter_sets(kwg, node_index, &ext_set);
-            *rightx = ext_set;
+            uint32_t sep_index = kwg_follow_arc(kwg, node_index, ML_SEPARATOR);
+            if (sep_index != 0) {
+                uint32_t ext_set;
+                kwg_get_letter_sets(kwg, sep_index, &ext_set);
+                *rightx = ext_set;
+            } else {
+                *rightx = 0;  /* No suffix extensions through separator */
+            }
         } else {
-            *rightx = 0;  /* No valid back extensions */
+            *rightx = 0;  /* No valid path through prefix */
         }
     }
 
     /* Compute leftx (front hooks) - letters that can precede right_tiles.
-     * Use GADDAG: traverse reversed right_tiles, then follow separator,
-     * then get letter set. These are letters L such that L + right_tiles
-     * starts a valid word.
+     * Use GADDAG: traverse reversed right_tiles, then get letter set at that node.
+     * These are letters L such that there exists a GADDAG path through
+     * reversed(right_tiles) + L. This means L could potentially precede right_tiles
+     * in some word.
      *
-     * GADDAG path: for tiles [A,B,C], we look up CBA^ then get letters after ^.
+     * NOTE: We get letters DIRECTLY at the node, NOT after separator.
+     * The separator path gives what comes in the suffix (rightward), but we want
+     * what can extend the reversed prefix (leftward).
+     *
+     * GADDAG path: for tiles [A,B,C], we look up CBA then get letters at that node.
      */
     if (right_len > 0) {
         uint32_t node_index = kwg_get_gaddag_root(kwg);
@@ -103,16 +120,11 @@ void compute_extension_sets(const uint32_t *kwg,
             if (node_index == 0) valid = 0;
         }
 
-        /* Follow separator to get front hooks */
+        /* Get letters directly at this node (what can continue the reversed path) */
         if (valid && node_index != 0) {
-            uint32_t sep_index = kwg_follow_arc(kwg, node_index, ML_SEPARATOR);
-            if (sep_index != 0) {
-                uint32_t ext_set;
-                kwg_get_letter_sets(kwg, sep_index, &ext_set);
-                *leftx = ext_set;
-            } else {
-                *leftx = 0;  /* No front extensions through separator */
-            }
+            uint32_t ext_set;
+            kwg_get_letter_sets(kwg, node_index, &ext_set);
+            *leftx = ext_set;
         } else {
             *leftx = 0;
         }
