@@ -1086,9 +1086,10 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     gen->highest_shadow_score = 0;
 
     /* Reset extension sets to trivial.
-     * Extension set filtering in shadow is not yet implemented - the infrastructure
-     * is in place (row_leftx/row_rightx are cached) but proper integration requires
-     * per-position filtering like in real move generation. */
+     * NOTE: Extension set filtering in shadow causes bad cutoffs due to
+     * incorrect semantics. The infrastructure is in place (row_leftx/row_rightx
+     * are cached) but proper integration requires matching the exact algorithm
+     * used in recursive_gen. Disabled for now until the semantics are fixed. */
     gen->left_ext_set = TRIVIAL_CROSS_SET;
     gen->right_ext_set = TRIVIAL_CROSS_SET;
 
