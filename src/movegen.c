@@ -474,7 +474,11 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
 
         /* Empty square - check what can go here */
         CrossSet cross_set = gen->row_cross_sets[gen->shadow_right_col];
-        uint32_t possible = cross_set & gen->rack_bits & gen->right_ext_set;
+        uint32_t cross_ext = cross_set & gen->right_ext_set;
+        /* If rack has blank, blank can play as any letter in cross_set */
+        uint32_t possible = (gen->rack.counts[BLANK_TILE] > 0)
+            ? cross_ext
+            : (cross_ext & gen->rack_bits);
         gen->right_ext_set = TRIVIAL_CROSS_SET;
 
         if (possible == 0) {
@@ -504,10 +508,25 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
             is_unique = 1;
         }
 
-        /* Record if valid play */
-        if (gen->tiles_played > 0 && is_unique) {
+        /* Record if valid play.
+         * Following original magpie logic:
+         * - Multi-tile plays (tiles_played > 1) are always recorded
+         * - Single-tile plays require is_unique to avoid duplicates */
+        if ((gen->tiles_played > 1) || (gen->tiles_played == 1 && is_unique)) {
+            /* Before recording, scan forward for adjacent playthroughs.
+             * These MUST be part of the word if we stop here. */
+            Equity saved_main = gen->shadow_mainword_restricted_score;
+            int scan_col = gen->shadow_right_col + 1;
+            while (scan_col < BOARD_DIM) {
+                MachineLetter scan_letter = gen->row_letters[scan_col];
+                if (scan_letter == EMPTY_SQUARE) break;
+                gen->shadow_mainword_restricted_score += get_tile_score(scan_letter);
+                scan_col++;
+            }
             maybe_recalc_effective_multipliers(gen);
             shadow_record(gen);
+            /* Restore main score for continued exploration */
+            gen->shadow_mainword_restricted_score = saved_main;
         }
     }
 
@@ -538,9 +557,14 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
  * Shadow play leftward for non-playthrough anchor
  */
 static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
+    int has_blank = gen->rack.counts[BLANK_TILE] > 0;
+
     for (;;) {
         /* Try extending right first */
-        uint32_t possible_right = gen->right_ext_set & gen->rack_bits;
+        /* If rack has blank, blank can play as any letter */
+        uint32_t possible_right = has_blank
+            ? gen->right_ext_set
+            : (gen->right_ext_set & gen->rack_bits);
         if (possible_right != 0) {
             shadow_play_right(gen, is_unique);
         }
@@ -553,7 +577,10 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
             return;
         }
 
-        uint32_t possible_left = gen->left_ext_set & gen->rack_bits;
+        /* If rack has blank, blank can play as any letter */
+        uint32_t possible_left = has_blank
+            ? gen->left_ext_set
+            : (gen->left_ext_set & gen->rack_bits);
         if (possible_left == 0) {
             return;
         }
@@ -584,15 +611,23 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
  * Shadow play leftward for playthrough anchor
  */
 static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
+    int has_blank = gen->rack.counts[BLANK_TILE] > 0;
+
     for (;;) {
         /* Try extending right first */
-        uint32_t possible_right = gen->right_ext_set & gen->rack_bits;
+        /* If rack has blank, blank can play as any letter */
+        uint32_t possible_right = has_blank
+            ? gen->right_ext_set
+            : (gen->right_ext_set & gen->rack_bits);
         if (possible_right != 0) {
             shadow_play_right(gen, is_unique);
         }
         gen->right_ext_set = TRIVIAL_CROSS_SET;
 
-        uint32_t possible_left = gen->left_ext_set & gen->rack_bits;
+        /* If rack has blank, blank can play as any letter */
+        uint32_t possible_left = has_blank
+            ? gen->left_ext_set
+            : (gen->left_ext_set & gen->rack_bits);
         gen->left_ext_set = TRIVIAL_CROSS_SET;
 
         /* Check bounds */
@@ -637,7 +672,12 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
             is_unique = 1;
         }
 
-        if (gen->tiles_played > 0 && is_unique) {
+        /* Record if valid play.
+         * Following original magpie logic:
+         * - Multi-tile plays (tiles_played > 1) are always recorded
+         * - Single-tile plays require is_unique to avoid duplicates */
+        if ((gen->tiles_played > 1) || (gen->tiles_played == 1 && is_unique)) {
+            maybe_recalc_effective_multipliers(gen);
             shadow_record(gen);
         }
     }
@@ -648,7 +688,10 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
  */
 static void shadow_start_nonplaythrough(MoveGenState *gen) {
     CrossSet cross_set = gen->row_cross_sets[gen->shadow_left_col];
-    uint32_t possible = cross_set & gen->rack_bits;
+    /* If rack has blank, blank can play as any letter in cross_set */
+    uint32_t possible = (gen->rack.counts[BLANK_TILE] > 0)
+        ? cross_set
+        : (cross_set & gen->rack_bits);
 
     if (possible == 0) {
         return;
@@ -778,24 +821,24 @@ static void gen_shadow(MoveGenState *gen) {
                 /* Restore rack */
                 memcpy(&gen->rack, &saved_rack, sizeof(Rack));
 
-                /* Add to anchor heap if any valid plays possible */
-                if (gen->highest_shadow_equity > -32767) {
-                    Anchor anchor;
-                    anchor.row = (dir == DIR_HORIZONTAL) ? row : col;
-                    anchor.col = (dir == DIR_HORIZONTAL) ? col : row;
-                    anchor.dir = dir;
-                    anchor.pad = 0;
-                    anchor.highest_possible_equity = gen->highest_shadow_equity;
-                    anchor.highest_possible_score = gen->highest_shadow_score;
-                    /* scan_order matches original non-shadow processing order:
-                     * Horizontal: row * 15 + col (0-224)
-                     * Vertical: 225 + col * 15 + row (225-449) */
-                    anchor.scan_order = (dir == DIR_HORIZONTAL)
-                        ? (row * BOARD_DIM + col)
-                        : (225 + col * BOARD_DIM + row);
+                /* Add ALL anchors to heap (even with low equity).
+                 * The shadow algorithm may underestimate equity for some positions,
+                 * so we must not skip any anchors based on shadow equity. */
+                Anchor anchor;
+                anchor.row = (dir == DIR_HORIZONTAL) ? row : col;
+                anchor.col = (dir == DIR_HORIZONTAL) ? col : row;
+                anchor.dir = dir;
+                anchor.pad = 0;
+                anchor.highest_possible_equity = gen->highest_shadow_equity;
+                anchor.highest_possible_score = gen->highest_shadow_score;
+                /* scan_order matches original non-shadow processing order:
+                 * Horizontal: row * 15 + col (0-224)
+                 * Vertical: 225 + col * 15 + row (225-449) */
+                anchor.scan_order = (dir == DIR_HORIZONTAL)
+                    ? (row * BOARD_DIM + col)
+                    : (225 + col * BOARD_DIM + row);
 
-                    anchor_heap_insert(&gen->anchor_heap, &anchor);
-                }
+                anchor_heap_insert(&gen->anchor_heap, &anchor);
 
                 gen->last_anchor_col = col;
             }
@@ -814,11 +857,16 @@ static void gen_shadow(MoveGenState *gen) {
  * 2. score (higher is better)
  * 3. row (lower is better)
  * 4. col (lower is better)
- * 5. dir (horizontal=0 first)
+ * 5. dir (horizontal=0 wins over vertical=1)
+ * 6. tiles_played (lower is better)
+ * 7. tiles_length (lower is better)
+ * 8. tiles (lexicographic - lower is better)
  * Returns 1 if new move is better, 0 otherwise
  */
 static int is_better_move(Equity new_equity, int16_t new_score,
                           uint8_t new_row, uint8_t new_col, uint8_t new_dir,
+                          uint8_t new_tiles_played, uint8_t new_tiles_length,
+                          const MachineLetter *new_tiles,
                           const MoveGenState *gen) {
     Move *best = gen->best_move;
 
@@ -847,7 +895,24 @@ static int is_better_move(Equity new_equity, int16_t new_score,
 
     /* Equal position: prefer horizontal (dir=0) over vertical (dir=1) */
     if (new_dir != best->dir) {
-        return new_dir < best->dir;
+        return best->dir;  /* returns 1 if best is vertical (new horizontal wins) */
+    }
+
+    /* Equal dir: compare tiles_played (lower is better) */
+    if (new_tiles_played != best->tiles_played) {
+        return new_tiles_played < best->tiles_played;
+    }
+
+    /* Equal tiles_played: compare tiles_length (lower is better) */
+    if (new_tiles_length != best->tiles_length) {
+        return new_tiles_length < best->tiles_length;
+    }
+
+    /* Equal length: lexicographic comparison of tiles (lower is better) */
+    for (int i = 0; i < new_tiles_length; i++) {
+        if (new_tiles[i] != best->tiles[i]) {
+            return new_tiles[i] < best->tiles[i];
+        }
     }
 
     /* Completely equal - don't replace */
@@ -884,8 +949,16 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
         new_col = gen->current_row;
     }
 
+    /* Build tiles array for tiebreaking comparison */
+    uint8_t new_tiles_length = rightstrip - leftstrip + 1;
+    MachineLetter new_tiles[BOARD_DIM];
+    for (int i = leftstrip; i <= rightstrip; i++) {
+        new_tiles[i - leftstrip] = gen->strip[i];
+    }
+
     /* Only record if better than current best (with tiebreaking) */
-    if (!is_better_move(equity, score, new_row, new_col, gen->dir, gen)) return;
+    if (!is_better_move(equity, score, new_row, new_col, gen->dir,
+                        gen->tiles_played, new_tiles_length, new_tiles, gen)) return;
 
     Move *move = gen->best_move;
     gen->best_equity = equity;
@@ -1362,12 +1435,16 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         Anchor anchor;
         anchor_heap_extract_max(&gen.anchor_heap, &anchor);
 
-        /* Check for cutoff: if best anchor's upper bound can't beat current best */
+        /* Cutoff disabled: shadow equity bounds are sometimes too low, causing
+         * good moves to be missed. Without cutoff, shadow mode processes all
+         * anchors (same as noshadow) but in best-first order. This is correct
+         * but doesn't provide the speed benefit of early cutoff. */
+        #if 0
         if (gen.best_equity > -32767 &&
-            anchor.highest_possible_equity <= gen.best_equity) {
-            /* Remaining anchors can't beat current best - stop */
+            anchor.highest_possible_equity < gen.best_equity) {
             break;
         }
+        #endif
 
         /* Cache row if different from current */
         int row = (anchor.dir == DIR_HORIZONTAL) ? anchor.row : anchor.col;
@@ -1375,8 +1452,11 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
             cache_row(&gen, row, anchor.dir);
             cached_row = row;
             cached_dir = anchor.dir;
-            gen.last_anchor_col = BOARD_DIM;  /* Reset sentinel */
         }
+        /* Always reset last_anchor_col to allow full left extension.
+         * In shadow mode, anchors are processed in heap (equity) order,
+         * not column order, so the last_anchor_col optimization doesn't apply. */
+        gen.last_anchor_col = BOARD_DIM;
 
         /* Show progress */
         show_progress(row, anchor.dir);
@@ -1393,8 +1473,6 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Generate moves for this anchor */
         int anchor_col = (anchor.dir == DIR_HORIZONTAL) ? anchor.col : anchor.row;
         gen_for_anchor(&gen, anchor_col);
-
-        gen.last_anchor_col = anchor_col;
     }
 #else
     /* Non-shadow mode: process rows in order (for validation) */
