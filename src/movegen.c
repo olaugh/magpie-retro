@@ -31,6 +31,12 @@
 #define USE_SHADOW_DEBUG 0
 #endif
 
+#if USE_SHADOW
+/* Global counters for shadow algorithm statistics */
+int shadow_total_anchors = 0;
+int shadow_cutoff_anchors = 0;
+#endif
+
 #if USE_SHADOW_DEBUG
 /* Info about a bad cutoff for debugging */
 typedef struct {
@@ -109,6 +115,8 @@ typedef struct {
     CrossSet row_cross_sets[BOARD_DIM];
     int8_t row_cross_scores[BOARD_DIM];
     uint8_t row_is_anchor[BOARD_DIM];
+    CrossSet row_leftx[BOARD_DIM];    /* Left extension sets for current dir */
+    CrossSet row_rightx[BOARD_DIM];   /* Right extension sets for current dir */
 
     /* ===== Shadow algorithm state ===== */
 
@@ -1077,7 +1085,10 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     gen->highest_shadow_equity = 0;
     gen->highest_shadow_score = 0;
 
-    /* Reset extension sets to trivial */
+    /* Reset extension sets to trivial.
+     * Extension set filtering in shadow is not yet implemented - the infrastructure
+     * is in place (row_leftx/row_rightx are cached) but proper integration requires
+     * per-position filtering like in real move generation. */
     gen->left_ext_set = TRIVIAL_CROSS_SET;
     gen->right_ext_set = TRIVIAL_CROSS_SET;
 
@@ -1630,9 +1641,13 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
         if (dir == DIR_HORIZONTAL) {
             gen->row_cross_sets[col] = sq->cross_set_h;
             gen->row_cross_scores[col] = sq->cross_score_h;
+            gen->row_leftx[col] = sq->leftx_h;
+            gen->row_rightx[col] = sq->rightx_h;
         } else {
             gen->row_cross_sets[col] = sq->cross_set_v;
             gen->row_cross_scores[col] = sq->cross_score_v;
+            gen->row_leftx[col] = sq->leftx_v;
+            gen->row_rightx[col] = sq->rightx_v;
         }
 
         /* Compute anchor status: empty square adjacent to a tile.
@@ -1852,11 +1867,14 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         anchor_heap_extract_max(&gen.anchor_heap, &anchor);
 
         /* Early cutoff: if best anchor's upper bound can't beat current best, stop */
-#if 0  /* DISABLED - use debug mode below */
+#if USE_SHADOW && !USE_SHADOW_DEBUG
         if (gen.best_equity > EQUITY_INITIAL_VALUE &&
             anchor.highest_possible_equity < gen.best_equity) {
+            /* Count all anchors we're skipping */
+            shadow_cutoff_anchors += gen.anchor_heap.count + 1;
             break;
         }
+        shadow_total_anchors++;
 #endif
 #if USE_SHADOW_DEBUG
         Equity equity_before = gen.best_equity;

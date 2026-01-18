@@ -120,6 +120,10 @@ void board_init(Board *board) {
         board->squares[i].cross_set_v = TRIVIAL_CROSS_SET;
         board->squares[i].cross_score_h = -1;  /* -1 = no cross word */
         board->squares[i].cross_score_v = -1;
+        board->squares[i].leftx_h = TRIVIAL_CROSS_SET;
+        board->squares[i].rightx_h = TRIVIAL_CROSS_SET;
+        board->squares[i].leftx_v = TRIVIAL_CROSS_SET;
+        board->squares[i].rightx_v = TRIVIAL_CROSS_SET;
     }
     board->tiles_on_board = 0;
 }
@@ -150,8 +154,19 @@ int board_is_empty(const Board *board, uint8_t row, uint8_t col) {
 }
 
 /*
- * Update cross-sets after a move is played
- * This recomputes cross-sets for all empty squares adjacent to tiles
+ * Update cross-sets and extension sets after a move is played.
+ * This recomputes for all empty squares adjacent to tiles.
+ *
+ * Cross-sets are for the PERPENDICULAR direction (checking cross-words).
+ * Extension sets are for the MAIN word direction (checking word extensions).
+ *
+ * For horizontal plays:
+ *   - cross_set_h comes from VERTICAL neighbors (cross-words above/below)
+ *   - leftx_h, rightx_h come from HORIZONTAL neighbors (main word left/right)
+ *
+ * For vertical plays:
+ *   - cross_set_v comes from HORIZONTAL neighbors (cross-words left/right)
+ *   - leftx_v, rightx_v come from VERTICAL neighbors (main word above/below)
  */
 void board_update_cross_sets(Board *board, const uint32_t *kwg) {
     for (int row = 0; row < BOARD_DIM; row++) {
@@ -160,20 +175,29 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             Square *sq = &board->squares[idx];
 
             if (sq->letter != EMPTY_SQUARE) {
-                /* Occupied squares don't need cross-sets */
+                /* Occupied squares: no cross-sets, no extension sets */
                 sq->cross_set_h = 0;
                 sq->cross_set_v = 0;
+                sq->leftx_h = 0;
+                sq->rightx_h = 0;
+                sq->leftx_v = 0;
+                sq->rightx_v = 0;
                 continue;
             }
 
-            /* Compute horizontal cross-set (letters above/below) */
             MachineLetter prefix[BOARD_DIM];
             MachineLetter suffix[BOARD_DIM];
             int prefix_len = 0;
             int suffix_len = 0;
 
-            /* Check vertical neighbors for horizontal cross-set */
-            /* Keep blank flag intact so compute_cross_set can score blanks as 0 */
+            /*
+             * VERTICAL neighbors: compute cross_set_h AND leftx_v/rightx_v
+             *
+             * For cross_set_h: prefix=above, suffix=below, find valid middle letters
+             * For extension sets (vertical plays):
+             *   - leftx_v (front hooks) = letters that can START a word ending in suffix
+             *   - rightx_v (back hooks) = letters that can CONTINUE a word starting with prefix
+             */
             for (int r = row - 1; r >= 0; r--) {
                 MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
                 if (ml == EMPTY_SQUARE) break;
@@ -186,11 +210,12 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             }
 
             if (prefix_len == 0 && suffix_len == 0) {
-                /* No vertical neighbors - all letters valid */
                 sq->cross_set_h = TRIVIAL_CROSS_SET;
                 sq->cross_score_h = -1;
+                sq->leftx_v = TRIVIAL_CROSS_SET;
+                sq->rightx_v = TRIVIAL_CROSS_SET;
             } else {
-                /* Reverse prefix (it was collected top-to-bottom) */
+                /* Reverse prefix (collected bottom-to-top, need top-to-bottom) */
                 for (int i = 0; i < prefix_len / 2; i++) {
                     MachineLetter tmp = prefix[i];
                     prefix[i] = prefix[prefix_len - 1 - i];
@@ -199,13 +224,20 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
                 sq->cross_set_h = compute_cross_set(kwg, prefix, prefix_len,
                                                      suffix, suffix_len,
                                                      &sq->cross_score_h);
+                /* Extension sets for vertical plays:
+                 * prefix = tiles above, suffix = tiles below
+                 * leftx_v = front hooks for suffix (what can start a word going through suffix)
+                 * rightx_v = back hooks for prefix (what can continue after prefix) */
+                compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
+                                        &sq->leftx_v, &sq->rightx_v);
             }
 
-            /* Compute vertical cross-set (letters left/right) */
+            /*
+             * HORIZONTAL neighbors: compute cross_set_v AND leftx_h/rightx_h
+             */
             prefix_len = 0;
             suffix_len = 0;
 
-            /* Keep blank flag intact so compute_cross_set can score blanks as 0 */
             for (int c = col - 1; c >= 0; c--) {
                 MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
                 if (ml == EMPTY_SQUARE) break;
@@ -220,8 +252,10 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             if (prefix_len == 0 && suffix_len == 0) {
                 sq->cross_set_v = TRIVIAL_CROSS_SET;
                 sq->cross_score_v = -1;
+                sq->leftx_h = TRIVIAL_CROSS_SET;
+                sq->rightx_h = TRIVIAL_CROSS_SET;
             } else {
-                /* Reverse prefix */
+                /* Reverse prefix (collected right-to-left, need left-to-right) */
                 for (int i = 0; i < prefix_len / 2; i++) {
                     MachineLetter tmp = prefix[i];
                     prefix[i] = prefix[prefix_len - 1 - i];
@@ -230,6 +264,12 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
                 sq->cross_set_v = compute_cross_set(kwg, prefix, prefix_len,
                                                      suffix, suffix_len,
                                                      &sq->cross_score_v);
+                /* Extension sets for horizontal plays:
+                 * prefix = tiles left, suffix = tiles right
+                 * leftx_h = front hooks for suffix (what can start a word going through suffix)
+                 * rightx_h = back hooks for prefix (what can continue after prefix) */
+                compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
+                                        &sq->leftx_h, &sq->rightx_h);
             }
         }
     }

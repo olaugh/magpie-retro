@@ -70,3 +70,37 @@ The shadow algorithm issues were all related to not properly accounting for play
 3. The extend-left functions weren't recognizing existing tiles as playthroughs
 
 All issues are now fixed and the shadow algorithm correctly computes upper bounds.
+
+## Extension Set Infrastructure (In Progress)
+
+Added infrastructure for extension set (leftx/rightx) computation, which enables tighter filtering during move generation. This is used by the original magpie to reduce the search space.
+
+### Completed Work
+
+1. **Added extension set fields to Square structure** (`inc/scrabble.h`):
+   - `leftx_h`, `rightx_h` - horizontal direction extension sets
+   - `leftx_v`, `rightx_v` - vertical direction extension sets
+
+2. **Implemented extension set computation** (`src/kwg.c`):
+   - `compute_extension_sets()` function computes leftx and rightx for a position given adjacent tiles
+   - leftx (front hooks): Letters that can START a word ending in the suffix to the right
+   - rightx (back hooks): Letters that can CONTINUE a word starting with the prefix to the left
+
+3. **Updated board_update_cross_sets** (`src/board.c`):
+   - Computes extension sets alongside cross sets using the same neighbor tile data
+
+4. **Added row cache for extension sets** (`src/movegen.c`):
+   - `row_leftx[]` and `row_rightx[]` arrays in MoveGenState
+   - `cache_row()` copies extension sets from board squares
+
+### Not Yet Implemented
+
+Extension set filtering in the shadow algorithm is not yet integrated. The infrastructure is in place (extension sets are computed and cached), but proper integration requires per-position filtering similar to how extension sets are used in real move generation.
+
+Current shadow algorithm uses `TRIVIAL_CROSS_SET` for extension sets, matching the original Genesis behavior before these changes.
+
+### Performance Notes
+
+With shadow cutoff enabled:
+- **Cutoff rate**: ~41% of anchors are cut off (skipped because their upper bound can't beat current best)
+- **Correctness**: All moves match between shadow and noshadow builds (verified across 100 random games)

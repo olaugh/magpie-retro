@@ -160,6 +160,15 @@ int main(int argc, char **argv) {
     } else {
         fprintf(stderr, "NO BAD CUTOFFS\n");
     }
+#elif USE_SHADOW
+    /* Get shadow cutoff stats from movegen */
+    extern int shadow_total_anchors;
+    extern int shadow_cutoff_anchors;
+    int total = shadow_total_anchors + shadow_cutoff_anchors;
+    fflush(stdout);  /* Ensure stdout is flushed before printing to stderr */
+    fprintf(stderr, "SHADOW_CUTOFF: processed=%d cutoff=%d total=%d (%.1f%% cutoff)\n",
+            shadow_total_anchors, shadow_cutoff_anchors, total,
+            total > 0 ? 100.0 * shadow_cutoff_anchors / total : 0.0);
 #endif
 
     return 0;

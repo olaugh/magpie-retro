@@ -50,6 +50,75 @@ int kwg_is_valid_word(const uint32_t *kwg, const MachineLetter *letters, int cou
  *
  * Also computes the cross-score (sum of tile values for prefix + suffix)
  */
+/*
+ * Compute extension sets for a position given left and right tiles
+ * in the MAIN word direction.
+ *
+ * leftx = "front hooks" - letters that can go BEFORE right_tiles to form valid word starts
+ * rightx = "back hooks" - letters that can go AFTER left_tiles to continue/complete words
+ *
+ * These enable pruning: if leftx & rack == 0, no tiles can extend leftward through right_tiles.
+ */
+void compute_extension_sets(const uint32_t *kwg,
+                            const MachineLetter *left_tiles, int left_len,
+                            const MachineLetter *right_tiles, int right_len,
+                            CrossSet *leftx, CrossSet *rightx) {
+    *leftx = TRIVIAL_CROSS_SET;
+    *rightx = TRIVIAL_CROSS_SET;
+
+    /* Compute rightx (back hooks) - letters that can follow left_tiles.
+     * Traverse DAWG through left_tiles, then get letter set at that node.
+     * These are letters L such that left_tiles + L is a valid word or prefix. */
+    if (left_len > 0) {
+        uint32_t node_index = kwg_get_dawg_root(kwg);
+        int valid = 1;
+        for (int i = 0; i < left_len && valid; i++) {
+            node_index = kwg_follow_arc(kwg, node_index, UNBLANKED(left_tiles[i]));
+            if (node_index == 0) valid = 0;
+        }
+        if (valid && node_index != 0) {
+            /* Get all letters that have arcs from this node (back extensions) */
+            uint32_t ext_set;
+            kwg_get_letter_sets(kwg, node_index, &ext_set);
+            *rightx = ext_set;
+        } else {
+            *rightx = 0;  /* No valid back extensions */
+        }
+    }
+
+    /* Compute leftx (front hooks) - letters that can precede right_tiles.
+     * Use GADDAG: traverse reversed right_tiles, then follow separator,
+     * then get letter set. These are letters L such that L + right_tiles
+     * starts a valid word.
+     *
+     * GADDAG path: for tiles [A,B,C], we look up CBA^ then get letters after ^.
+     */
+    if (right_len > 0) {
+        uint32_t node_index = kwg_get_gaddag_root(kwg);
+        int valid = 1;
+
+        /* Traverse reversed right_tiles through GADDAG */
+        for (int i = right_len - 1; i >= 0 && valid; i--) {
+            node_index = kwg_follow_arc(kwg, node_index, UNBLANKED(right_tiles[i]));
+            if (node_index == 0) valid = 0;
+        }
+
+        /* Follow separator to get front hooks */
+        if (valid && node_index != 0) {
+            uint32_t sep_index = kwg_follow_arc(kwg, node_index, ML_SEPARATOR);
+            if (sep_index != 0) {
+                uint32_t ext_set;
+                kwg_get_letter_sets(kwg, sep_index, &ext_set);
+                *leftx = ext_set;
+            } else {
+                *leftx = 0;  /* No front extensions through separator */
+            }
+        } else {
+            *leftx = 0;
+        }
+    }
+}
+
 CrossSet compute_cross_set(const uint32_t *kwg,
                            const MachineLetter *prefix, int prefix_len,
                            const MachineLetter *suffix, int suffix_len,

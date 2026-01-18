@@ -63,6 +63,14 @@ typedef struct {
     CrossSet cross_set_v;    /* Cross-set for vertical plays */
     int8_t cross_score_h;    /* Cross-word score for horizontal */
     int8_t cross_score_v;    /* Cross-word score for vertical */
+    /* Extension sets: which letters can extend a word in each direction.
+     * leftx_h = letters that can go left when playing horizontally
+     * rightx_h = letters that can go right when playing horizontally
+     * These enable pruning: if leftx_h & rack == 0, no valid left extension. */
+    CrossSet leftx_h;        /* Left extension set for horizontal */
+    CrossSet rightx_h;       /* Right extension set for horizontal */
+    CrossSet leftx_v;        /* Left extension set for vertical */
+    CrossSet rightx_v;       /* Right extension set for vertical */
 } Square;
 
 /* Board state */
