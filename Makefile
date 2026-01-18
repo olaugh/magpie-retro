@@ -472,3 +472,57 @@ build/batch-nwl23-shadow-debug/test_batch: nwl23-shadow build/batch-nwl23-shadow
 
 batch-shadow-debug: build/batch-nwl23-shadow-debug/test_batch
 	@echo "Shadow debug batch: build/batch-nwl23-shadow-debug/test_batch"
+
+# Timing build (for profiling movegen phases)
+BATCH_TIMING_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=1 -DUSE_TIMING=1
+
+build/batch-nwl23-timing:
+	@mkdir -p $@
+
+build/batch-nwl23-timing/%.o: src/%.c | build/batch-nwl23-timing
+	$(NATIVE_CC) $(BATCH_TIMING_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing/test_batch.o: test_batch.c | build/batch-nwl23-timing
+	$(NATIVE_CC) $(BATCH_TIMING_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing/kwg_data.o: build/nwl23-shadow/kwg_data.c | build/batch-nwl23-timing
+	$(NATIVE_CC) $(BATCH_TIMING_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing/klv_data.o: build/nwl23-shadow/klv_data.c | build/batch-nwl23-timing
+	$(NATIVE_CC) $(BATCH_TIMING_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_NWL23_TIMING_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-timing/%.o,$(NATIVE_SOURCES))
+
+build/batch-nwl23-timing/test_batch: nwl23-shadow build/batch-nwl23-timing/test_batch.o $(BATCH_NWL23_TIMING_OBJECTS) build/batch-nwl23-timing/kwg_data.o build/batch-nwl23-timing/klv_data.o
+	$(NATIVE_CC) -O3 -o $@ build/batch-nwl23-timing/test_batch.o $(BATCH_NWL23_TIMING_OBJECTS) \
+		build/batch-nwl23-timing/kwg_data.o build/batch-nwl23-timing/klv_data.o
+
+batch-timing: build/batch-nwl23-timing/test_batch
+	@echo "Timing batch: build/batch-nwl23-timing/test_batch"
+
+# Timing build for noshadow
+BATCH_TIMING_NOSHADOW_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=0 -DUSE_TIMING=1
+
+build/batch-nwl23-timing-noshadow:
+	@mkdir -p $@
+
+build/batch-nwl23-timing-noshadow/%.o: src/%.c | build/batch-nwl23-timing-noshadow
+	$(NATIVE_CC) $(BATCH_TIMING_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing-noshadow/test_batch.o: test_batch.c | build/batch-nwl23-timing-noshadow
+	$(NATIVE_CC) $(BATCH_TIMING_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing-noshadow/kwg_data.o: build/nwl23-noshadow/kwg_data.c | build/batch-nwl23-timing-noshadow
+	$(NATIVE_CC) $(BATCH_TIMING_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+build/batch-nwl23-timing-noshadow/klv_data.o: build/nwl23-noshadow/klv_data.c | build/batch-nwl23-timing-noshadow
+	$(NATIVE_CC) $(BATCH_TIMING_NOSHADOW_CFLAGS) -Iinc -c -o $@ $<
+
+BATCH_NWL23_TIMING_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-timing-noshadow/%.o,$(NATIVE_SOURCES))
+
+build/batch-nwl23-timing-noshadow/test_batch: nwl23-noshadow build/batch-nwl23-timing-noshadow/test_batch.o $(BATCH_NWL23_TIMING_NOSHADOW_OBJECTS) build/batch-nwl23-timing-noshadow/kwg_data.o build/batch-nwl23-timing-noshadow/klv_data.o
+	$(NATIVE_CC) -O3 -o $@ build/batch-nwl23-timing-noshadow/test_batch.o $(BATCH_NWL23_TIMING_NOSHADOW_OBJECTS) \
+		build/batch-nwl23-timing-noshadow/kwg_data.o build/batch-nwl23-timing-noshadow/klv_data.o
+
+batch-timing-noshadow: build/batch-nwl23-timing-noshadow/test_batch
+	@echo "Timing noshadow batch: build/batch-nwl23-timing-noshadow/test_batch"

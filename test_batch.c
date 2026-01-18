@@ -171,5 +171,10 @@ int main(int argc, char **argv) {
             total > 0 ? 100.0 * shadow_cutoff_anchors / total : 0.0);
 #endif
 
+#if USE_TIMING
+    extern void print_timing_stats(void);
+    print_timing_stats();
+#endif
+
     return 0;
 }

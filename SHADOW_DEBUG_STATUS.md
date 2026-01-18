@@ -102,10 +102,19 @@ Extension sets (leftx/rightx) enable tighter filtering during move generation by
 ### Performance Notes
 
 With shadow cutoff and extension set filtering enabled:
-- **Cutoff rate**: ~42.3% of anchors cut off (slight improvement from ~41% without extension filtering)
+- **Cutoff rate**: ~42.3% of anchors cut off
 - **Correctness**: Verified across 1000 random games with zero bad cutoffs
-- **Speed**: Shadow is ~20-25% slower than noshadow despite cutoffs (overhead exceeds savings)
+- **Speed**: Shadow is now ~15-20% **faster** than noshadow
 
-Timing comparison (100 games, NWL23):
-- noshadow: ~0.83s
-- shadow: ~1.03s
+Timing comparison (300 games, NWL23):
+- noshadow: ~2.47s
+- shadow: ~2.09s (15% faster)
+
+### Key Optimization: Remove Per-Anchor leave_map_init
+
+The initial implementation called `leave_map_init()` for each anchor in the shadow path, which was a massive overhead (33% of total time). The leave map is based on the original rack and doesn't change between anchors, so this was unnecessary.
+
+Fix: Only call `leave_map_init()` once at the start of `generate_moves()`, and reset `leave_map.current_index = 0` when restoring the rack for each anchor.
+
+Before fix: shadow was ~25% slower than noshadow
+After fix: shadow is ~15% faster than noshadow

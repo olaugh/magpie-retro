@@ -31,6 +31,28 @@
 #define USE_SHADOW_DEBUG 0
 #endif
 
+/* Timing instrumentation for profiling */
+#ifndef USE_TIMING
+#define USE_TIMING 0
+#endif
+
+#if USE_TIMING
+#include <sys/time.h>
+#include <stdint.h>
+#include <stdio.h>
+static uint64_t timing_shadow_us = 0;
+static uint64_t timing_movegen_us = 0;
+static uint64_t timing_leave_init_us = 0;
+static uint64_t timing_cache_row_us = 0;
+static int timing_call_count = 0;
+
+static inline uint64_t get_time_us(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+#endif
+
 #if USE_SHADOW
 /* Global counters for shadow algorithm statistics */
 int shadow_total_anchors = 0;
@@ -1850,7 +1872,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
 #if USE_SHADOW
     /* Run shadow algorithm to build anchor heap with upper bounds */
+#if USE_TIMING
+    uint64_t t_shadow_start = get_time_us();
+#endif
     gen_shadow(&gen);
+#if USE_TIMING
+    timing_shadow_us += get_time_us() - t_shadow_start;
+#endif
 
     /* Restore rack after shadow (gen_shadow modifies it) */
     memcpy(&gen.rack, rack, sizeof(Rack));
@@ -1883,7 +1911,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Cache row if different from current */
         int row = (anchor.dir == DIR_HORIZONTAL) ? anchor.row : anchor.col;
         if (row != cached_row || anchor.dir != cached_dir) {
+#if USE_TIMING
+            uint64_t t_cache = get_time_us();
+#endif
             cache_row(&gen, row, anchor.dir);
+#if USE_TIMING
+            timing_cache_row_us += get_time_us() - t_cache;
+#endif
             cached_row = row;
             cached_dir = anchor.dir;
         }
@@ -1894,17 +1928,23 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Show progress */
         show_progress(row, anchor.dir);
 
-        /* Reinitialize leave map for this anchor */
-        if (klv != NULL) {
-            leave_map_init(&gen.leave_map, klv, rack);
-        }
-
-        /* Restore rack for this anchor */
+        /* Restore rack for this anchor.
+         * Note: leave_map doesn't need reinitialization - it's based on the original
+         * rack and we're restoring the rack here. */
         memcpy(&gen.rack, rack, sizeof(Rack));
+
+        /* Reset leave_map's current_index to match restored rack (all tiles present = index 0) */
+        gen.leave_map.current_index = 0;
 
         /* Generate moves for this anchor */
         int anchor_col = (anchor.dir == DIR_HORIZONTAL) ? anchor.col : anchor.row;
+#if USE_TIMING
+        uint64_t t_gen = get_time_us();
+#endif
         gen_for_anchor(&gen, anchor_col);
+#if USE_TIMING
+        timing_movegen_us += get_time_us() - t_gen;
+#endif
 
 #if USE_SHADOW_DEBUG
         /* If cutoff would have fired but this anchor found better move */
@@ -1976,7 +2016,31 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
     /* Set count: 0 if no moves found, 1 if best move found */
     moves->count = (gen.best_equity > EQUITY_INITIAL_VALUE) ? 1 : 0;
+
+#if USE_TIMING
+    timing_call_count++;
+#endif
 }
+
+#if USE_TIMING
+void print_timing_stats(void) {
+    printf("TIMING: calls=%d shadow=%llu us movegen=%llu us leave_init=%llu us cache_row=%llu us\n",
+           timing_call_count, timing_shadow_us, timing_movegen_us, timing_leave_init_us, timing_cache_row_us);
+    printf("TIMING: shadow=%.1f%% movegen=%.1f%% leave_init=%.1f%% cache_row=%.1f%%\n",
+           100.0 * timing_shadow_us / (timing_shadow_us + timing_movegen_us + timing_leave_init_us + timing_cache_row_us),
+           100.0 * timing_movegen_us / (timing_shadow_us + timing_movegen_us + timing_leave_init_us + timing_cache_row_us),
+           100.0 * timing_leave_init_us / (timing_shadow_us + timing_movegen_us + timing_leave_init_us + timing_cache_row_us),
+           100.0 * timing_cache_row_us / (timing_shadow_us + timing_movegen_us + timing_leave_init_us + timing_cache_row_us));
+}
+
+void reset_timing_stats(void) {
+    timing_shadow_us = 0;
+    timing_movegen_us = 0;
+    timing_leave_init_us = 0;
+    timing_cache_row_us = 0;
+    timing_call_count = 0;
+}
+#endif
 
 /*
  * Compare moves by score (for sorting)
