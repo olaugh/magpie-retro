@@ -42,7 +42,6 @@
 #include <stdio.h>
 static uint64_t timing_shadow_us = 0;
 static uint64_t timing_movegen_us = 0;
-static uint64_t timing_leave_init_us = 0;
 static uint64_t timing_cache_row_us = 0;
 static int timing_call_count = 0;
 
@@ -1913,14 +1912,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
 #if USE_TIMING
 void print_timing_stats(void) {
-    uint64_t total_us = timing_shadow_us + timing_movegen_us + timing_leave_init_us + timing_cache_row_us;
-    printf("TIMING: calls=%d shadow=%llu us movegen=%llu us leave_init=%llu us cache_row=%llu us\n",
-           timing_call_count, timing_shadow_us, timing_movegen_us, timing_leave_init_us, timing_cache_row_us);
+    uint64_t total_us = timing_shadow_us + timing_movegen_us + timing_cache_row_us;
+    printf("TIMING: calls=%d shadow=%llu us movegen=%llu us cache_row=%llu us\n",
+           timing_call_count, timing_shadow_us, timing_movegen_us, timing_cache_row_us);
     if (total_us > 0) {
-        printf("TIMING: shadow=%.1f%% movegen=%.1f%% leave_init=%.1f%% cache_row=%.1f%%\n",
+        printf("TIMING: shadow=%.1f%% movegen=%.1f%% cache_row=%.1f%%\n",
                100.0 * timing_shadow_us / total_us,
                100.0 * timing_movegen_us / total_us,
-               100.0 * timing_leave_init_us / total_us,
                100.0 * timing_cache_row_us / total_us);
     }
 }
@@ -1928,7 +1926,6 @@ void print_timing_stats(void) {
 void reset_timing_stats(void) {
     timing_shadow_us = 0;
     timing_movegen_us = 0;
-    timing_leave_init_us = 0;
     timing_cache_row_us = 0;
     timing_call_count = 0;
 }
