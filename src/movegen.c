@@ -719,6 +719,11 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
 static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
     int has_blank = gen->rack.counts[BLANK_TILE] > 0;
 
+    /* After placing a tile at the anchor, left extension constraint no longer applies.
+     * The left_ext_set was for the anchor position; subsequent left extensions
+     * are only constrained by cross-sets at each position. */
+    gen->left_ext_set = TRIVIAL_CROSS_SET;
+
 #if USE_SHADOW_DEBUG
     if (shadow_debug_turn == 618 && gen->shadow_left_col == 0 && gen->dir == DIR_HORIZONTAL && gen->current_row == 2) {
         printf("T1178 NONPLAY_LEFT_ENTRY: left_col=%d right_col=%d tiles_played=%d rack_total=%d\n",
