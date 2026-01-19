@@ -145,7 +145,7 @@ CrossSet compute_cross_set(const uint32_t *kwg,
     }
 
     /* Calculate cross-score from existing tiles.
-     * Blanks (marked with BLANK_BIT) score 0, regular tiles use TILE_SCORES. */
+     * Blanks (marked with BLANK_MASK) score 0, regular tiles use TILE_SCORES. */
     for (int i = 0; i < prefix_len; i++) {
         if (!IS_BLANKED(prefix[i])) {
             *cross_score += TILE_SCORES[UNBLANKED(prefix[i])];

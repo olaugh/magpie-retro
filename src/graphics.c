@@ -740,7 +740,7 @@ void draw_board(const Board *board) {
             int x = BOARD_LEFT + col;
             int tile;
 
-            if (ml != EMPTY_SQUARE) {
+            if (ml != ALPHABET_EMPTY_SQUARE_MARKER) {
                 /* Tile placed - draw letter (covers entire square with grid) */
                 uint8_t letter_idx = UNBLANKED(ml);
                 if (letter_idx >= 1 && letter_idx <= 26) {

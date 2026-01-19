@@ -96,7 +96,7 @@ void bag_shuffle(Bag *bag) {
 }
 
 MachineLetter bag_draw(Bag *bag) {
-    if (bag->count == 0) return EMPTY_SQUARE;  /* Bag empty */
+    if (bag->count == 0) return ALPHABET_EMPTY_SQUARE_MARKER;  /* Bag empty */
     return bag->tiles[--bag->count];
 }
 
@@ -237,7 +237,7 @@ int game_play_move(GameState *game, const Move *move) {
     for (int i = 0; i < move->tiles_length; i++) {
         MachineLetter tile = move->tiles[i];
         if (tile != 0xFF) {  /* Not a play-through */
-            MachineLetter rack_tile = IS_BLANKED(tile) ? BLANK_TILE : tile;
+            MachineLetter rack_tile = IS_BLANKED(tile) ? BLANK_MACHINE_LETTER : tile;
             if (!rack_remove_tile(&player->rack, rack_tile)) {
                 return 0;  /* Tile not in rack */
             }

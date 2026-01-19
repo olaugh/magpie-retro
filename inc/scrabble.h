@@ -15,23 +15,28 @@
 /* Rack and tile limits */
 #define RACK_SIZE 7
 #define MAX_TILES_IN_BAG 100
-#define BLANK_TILE 0
 #define ALPHABET_SIZE 27  /* A-Z + blank */
 
-/* Machine letter encoding (0 = blank/separator, 1-26 = A-Z) */
+/* Machine letter encoding - names match original magpie (letter_distribution_defs.h) */
 typedef uint8_t MachineLetter;
+
+enum {
+    ALPHABET_EMPTY_SQUARE_MARKER = 0,  /* Empty board square */
+    PLAYED_THROUGH_MARKER = 0,         /* Marker for played-through tiles */
+    BLANK_MACHINE_LETTER = 0,          /* Blank tile index in rack/counts */
+    BLANK_MASK = 0x80,                 /* Bit set on blanked letters */
+    UNBLANK_MASK = 0x7F,               /* Mask to get unblanked letter */
+};
 
 #define ML_BLANK 0
 #define ML_A 1
 #define ML_Z 26
 #define ML_SEPARATOR 0  /* GADDAG separator */
-#define EMPTY_SQUARE 0xFF
 
-/* Blanked letter has bit 7 set */
-#define BLANK_BIT 0x80
-#define IS_BLANKED(ml) ((ml) & BLANK_BIT)
-#define UNBLANKED(ml) ((ml) & 0x7F)
-#define BLANKED(ml) ((ml) | BLANK_BIT)
+/* Blanked letter macros - use BLANK_MASK for consistency with original magpie */
+#define IS_BLANKED(ml) ((ml) & BLANK_MASK)
+#define UNBLANKED(ml) ((ml) & UNBLANK_MASK)
+#define BLANKED(ml) ((ml) | BLANK_MASK)
 
 /* Direction */
 #define DIR_HORIZONTAL 0
@@ -57,7 +62,7 @@ typedef int16_t Score;
 
 /* Square on the board */
 typedef struct {
-    MachineLetter letter;    /* Placed tile or EMPTY_SQUARE */
+    MachineLetter letter;    /* Placed tile or ALPHABET_EMPTY_SQUARE_MARKER */
     uint8_t bonus;           /* BonusType */
     CrossSet cross_set_h;    /* Cross-set for horizontal plays */
     CrossSet cross_set_v;    /* Cross-set for vertical plays */

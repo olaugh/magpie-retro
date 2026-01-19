@@ -114,7 +114,7 @@ void board_init(Board *board) {
     }
 
     for (int i = 0; i < BOARD_SIZE; i++) {
-        board->squares[i].letter = EMPTY_SQUARE;
+        board->squares[i].letter = ALPHABET_EMPTY_SQUARE_MARKER;
         board->squares[i].bonus = BONUS_LAYOUT[i];
         board->squares[i].cross_set_h = TRIVIAL_CROSS_SET;
         board->squares[i].cross_set_v = TRIVIAL_CROSS_SET;
@@ -133,7 +133,7 @@ void board_init(Board *board) {
  */
 void board_place_tile(Board *board, uint8_t row, uint8_t col, MachineLetter tile) {
     int idx = row * BOARD_DIM + col;
-    if (board->squares[idx].letter == EMPTY_SQUARE) {
+    if (board->squares[idx].letter == ALPHABET_EMPTY_SQUARE_MARKER) {
         board->tiles_on_board++;
     }
     board->squares[idx].letter = tile;
@@ -150,7 +150,7 @@ MachineLetter board_get_tile(const Board *board, uint8_t row, uint8_t col) {
  * Check if position is empty
  */
 int board_is_empty(const Board *board, uint8_t row, uint8_t col) {
-    return board->squares[row * BOARD_DIM + col].letter == EMPTY_SQUARE;
+    return board->squares[row * BOARD_DIM + col].letter == ALPHABET_EMPTY_SQUARE_MARKER;
 }
 
 /*
@@ -174,7 +174,7 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             int idx = row * BOARD_DIM + col;
             Square *sq = &board->squares[idx];
 
-            if (sq->letter != EMPTY_SQUARE) {
+            if (sq->letter != ALPHABET_EMPTY_SQUARE_MARKER) {
                 /* Occupied squares: no cross-sets, no extension sets */
                 sq->cross_set_h = 0;
                 sq->cross_set_v = 0;
@@ -200,12 +200,12 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
              */
             for (int r = row - 1; r >= 0; r--) {
                 MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
-                if (ml == EMPTY_SQUARE) break;
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 prefix[prefix_len++] = ml;
             }
             for (int r = row + 1; r < BOARD_DIM; r++) {
                 MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
-                if (ml == EMPTY_SQUARE) break;
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 suffix[suffix_len++] = ml;
             }
 
@@ -240,12 +240,12 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
 
             for (int c = col - 1; c >= 0; c--) {
                 MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
-                if (ml == EMPTY_SQUARE) break;
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 prefix[prefix_len++] = ml;
             }
             for (int c = col + 1; c < BOARD_DIM; c++) {
                 MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
-                if (ml == EMPTY_SQUARE) break;
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 suffix[suffix_len++] = ml;
             }
 
