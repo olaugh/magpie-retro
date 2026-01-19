@@ -1,0 +1,32 @@
+name: Test Shadow Algorithm
+
+on:
+  push:
+    branches: [main, fix-shadow-playthrough-bounds]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-shadow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3
+
+      - name: Build batch test binaries
+        run: make build/batch-nwl23-shadow/test_batch build/batch-nwl23-noshadow/test_batch
+
+      - name: Run 100 game comparison
+        run: |
+          echo "Running shadow..."
+          ./build/batch-nwl23-shadow/test_batch 0 100 > /tmp/shadow.txt
+          echo "Running noshadow..."
+          ./build/batch-nwl23-noshadow/test_batch 0 100 > /tmp/noshadow.txt
+          echo "Comparing outputs..."
+          # Remove the SHADOW_CUTOFF line (only in shadow output) before comparing
+          grep -v "^SHADOW_CUTOFF:" /tmp/shadow.txt > /tmp/shadow_clean.txt
+          grep -v "^SHADOW_CUTOFF:" /tmp/noshadow.txt > /tmp/noshadow_clean.txt
+          diff /tmp/shadow_clean.txt /tmp/noshadow_clean.txt
+          echo "All 100 games match!"
