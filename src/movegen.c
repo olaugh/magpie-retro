@@ -985,6 +985,11 @@ static void shadow_start_playthrough(MoveGenState *gen, MachineLetter current_le
  * Shadow play for a single anchor
  */
 static void shadow_play_for_anchor(MoveGenState *gen, int col) {
+    /* Skip if no tiles to play (matches original magpie max_tiles_to_play check) */
+    if (gen->rack.total == 0) {
+        return;
+    }
+
     /* Initialize shadow state for this anchor */
     gen->shadow_left_col = col;
     gen->shadow_right_col = col;
@@ -1001,10 +1006,6 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     memset(gen->descending_effective_letter_multipliers, 0,
            sizeof(gen->descending_effective_letter_multipliers));
 
-    /* Initialize to 0, not EQUITY_INITIAL_VALUE.
-     * Original magpie does this - if shadow_record is never called
-     * (e.g., vertical anchor with no valid extensions), we want
-     * a reasonable lower bound (0) not a sentinel that triggers cutoff. */
     gen->highest_shadow_equity = 0;
     gen->highest_shadow_score = 0;
 
