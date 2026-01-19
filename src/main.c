@@ -260,7 +260,9 @@ new_game:
     game.passes = 0;
     game.game_over = 0;
     history_count = 0;
-    total_frames = 0;
+
+    /* Start timing from here - includes cross-sets, rendering, everything */
+    uint32_t game_start_frames = frame_counter;
 
     board_update_cross_sets(&game.board, kwg_data);
     clear_screen();
@@ -277,7 +279,6 @@ new_game:
                       &game.players[game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
         last_move_frames = frame_counter - start_frames;
-        total_frames += last_move_frames;
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
@@ -327,6 +328,9 @@ new_game:
 
     /* Game over - show final state with total time */
     update_display(&game, history, history_count, last_move_frames);
+
+    /* Calculate total frames (all-inclusive: cross-sets, rendering, movegen) */
+    total_frames = frame_counter - game_start_frames;
 
     /* Display total frames below rack (row 22) */
     draw_string(0, 22, "FRAMES:", 0);
