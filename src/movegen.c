@@ -471,10 +471,11 @@ static Equity get_best_leave_for_tiles_remaining(const MoveGenState *gen, int ti
 static void shadow_record(MoveGenState *gen) {
     /* Compute upper bound score: pair highest tiles with highest multipliers.
      * Loop over all RACK_SIZE positions - unexplored positions have multiplier 0. */
+    /* Use explicit 16-bit casts to force native muls.w instead of __mulsi3 */
     Equity tiles_played_score = 0;
     for (int i = 0; i < RACK_SIZE; i++) {
-        tiles_played_score += gen->descending_tile_scores[i] *
-                              gen->descending_effective_letter_multipliers[i];
+        tiles_played_score += (int16_t)gen->descending_tile_scores[i] *
+                              (int16_t)gen->descending_effective_letter_multipliers[i];
     }
 
     Equity bingo_bonus = (gen->tiles_played >= RACK_SIZE) ? 50 : 0;
@@ -486,7 +487,7 @@ static void shadow_record(MoveGenState *gen) {
     /* For equity, add best possible leave value.
      * Match actual move generation: add leave if KLV is available.
      * (Original checked tiles_in_bag > 0, but actual gen doesn't) */
-    Equity equity = score * 8;  /* Convert to eighths */
+    Equity equity = score << 3;  /* Convert to eighths */
 #if USE_SHADOW_DEBUG
     shadow_debug_record_calls++;
 #endif
@@ -1350,7 +1351,7 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     }
 
     /* Calculate equity = score*8 + leave_value (both in eighths of a point) */
-    Equity equity = (Equity)(score * 8);
+    Equity equity = (Equity)(score << 3);
 
     /* Add leave value if KLV is available */
     if (gen->klv != NULL) {
