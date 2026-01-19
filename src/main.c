@@ -25,13 +25,6 @@ extern void draw_number(int x, int y, int num, int pal);
 extern void draw_hex(int x, int y, uint32_t num, int pal);
 extern void wait_vblank(void);
 extern void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames);
-extern void draw_cutoff_stats(int processed, int cutoff);
-
-#if USE_SHADOW
-/* Shadow cutoff counters (from movegen.c) */
-extern int shadow_last_move_processed;
-extern int shadow_last_move_cutoff;
-#endif
 
 /* External game functions */
 extern void rng_seed(uint32_t seed);
@@ -285,11 +278,6 @@ new_game:
                       kwg_data, &klv, &game.bag, &moves);
         last_move_frames = frame_counter - start_frames;
         total_frames += last_move_frames;
-
-#if USE_SHADOW
-        /* Show cutoff stats */
-        draw_cutoff_stats(shadow_last_move_processed, shadow_last_move_cutoff);
-#endif
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */

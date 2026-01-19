@@ -889,15 +889,3 @@ void update_display(const GameState *game, const void *history, int history_coun
     draw_history((const HistoryEntry *)history, history_count);
 }
 
-/* Display shadow cutoff stats at bottom right (row 26) */
-/* Shows P:processed C:cutoff in hex */
-void draw_cutoff_stats(int processed, int cutoff) {
-    /* Format: P:XXX C:XXX at columns 28-39 on row 26 */
-    draw_char(28, 26, 'P', 0);
-    draw_char(29, 26, ':', 0);
-    draw_hex_n(30, 26, (uint32_t)processed, 3, 0);
-    draw_char(33, 26, ' ', 0);
-    draw_char(34, 26, 'C', 0);
-    draw_char(35, 26, ':', 0);
-    draw_hex_n(36, 26, (uint32_t)cutoff, 3, 0);
-}
