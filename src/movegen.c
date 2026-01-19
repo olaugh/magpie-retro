@@ -572,7 +572,6 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
              * we should record that score. Check if there are MORE playthroughs
              * ahead (forming a longer word). */
             int scan_col = gen->shadow_right_col + 1;
-            Equity pre_scan_main = gen->shadow_mainword_restricted_score;
             while (scan_col < BOARD_DIM) {
                 MachineLetter ml = gen->row_letters[scan_col];
                 if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
