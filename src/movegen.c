@@ -57,6 +57,9 @@ static inline uint64_t get_time_us(void) {
 /* Global counters for shadow algorithm statistics */
 int shadow_total_anchors = 0;
 int shadow_cutoff_anchors = 0;
+/* Per-move counters (reset before each generate_moves call) */
+int shadow_last_move_processed = 0;
+int shadow_last_move_cutoff = 0;
 #endif
 
 #if USE_SHADOW_DEBUG
@@ -1395,7 +1398,6 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
 /* Forward declarations */
 static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                           int leftstrip, int rightstrip);
-static void show_recursion_count(void);
 
 /* Track recursion calls for debugging */
 static uint16_t recursion_counter = 0;
@@ -1700,25 +1702,10 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
 /*
  * Main entry point: generate all legal moves
  */
-/* Use draw_char from graphics.c for progress display */
-extern void draw_char(int x, int y, char c, int pal);
-
+/* Progress display disabled - was slowing down shadow version */
 static void show_progress(int n, int phase) {
-    /* Show H00-H14/V00-V14 at bottom right - row 26 to avoid board overlap */
-    /* Avoid division - use lookup table for 0-14 */
-    static const char tens[] = "000000000011111";
-    static const char ones[] = "012345678901234";
-
-    draw_char(36, 26, (phase == 0) ? 'H' : 'V', 0);
-    draw_char(37, 26, tens[n], 0);
-    draw_char(38, 26, ones[n], 0);
-}
-
-static void show_recursion_count(void) {
-    /* Show recursion counter - avoid division, just show low byte in hex */
-    uint8_t n = (uint8_t)recursion_counter;
-    draw_char(33, 26, "0123456789ABCDEF"[(n >> 4) & 0xF], 0);
-    draw_char(34, 26, "0123456789ABCDEF"[n & 0xF], 0);
+    (void)n;
+    (void)phase;
 }
 
 /*
@@ -1835,6 +1822,12 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
 
+#if USE_SHADOW && !USE_SHADOW_DEBUG
+    /* Reset per-move cutoff counters */
+    shadow_last_move_processed = 0;
+    shadow_last_move_cutoff = 0;
+#endif
+
 #if USE_SHADOW_DEBUG
     shadow_debug_turn++;
 #endif
@@ -1899,10 +1892,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         if (gen.best_equity > EQUITY_INITIAL_VALUE &&
             anchor.highest_possible_equity < gen.best_equity) {
             /* Count all anchors we're skipping */
-            shadow_cutoff_anchors += gen.anchor_heap.count + 1;
+            int cutoff_count = gen.anchor_heap.count + 1;
+            shadow_cutoff_anchors += cutoff_count;
+            shadow_last_move_cutoff += cutoff_count;
             break;
         }
         shadow_total_anchors++;
+        shadow_last_move_processed++;
 #endif
 #if USE_SHADOW_DEBUG
         Equity equity_before = gen.best_equity;

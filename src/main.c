@@ -25,6 +25,13 @@ extern void draw_number(int x, int y, int num, int pal);
 extern void draw_hex(int x, int y, uint32_t num, int pal);
 extern void wait_vblank(void);
 extern void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames);
+extern void draw_cutoff_stats(int processed, int cutoff);
+
+#if USE_SHADOW
+/* Shadow cutoff counters (from movegen.c) */
+extern int shadow_last_move_processed;
+extern int shadow_last_move_cutoff;
+#endif
 
 /* External game functions */
 extern void rng_seed(uint32_t seed);
@@ -145,6 +152,7 @@ typedef struct {
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
     int16_t score;
     int16_t equity;    /* Equity in eighths of a point */
+    uint16_t frames;   /* Frames elapsed finding this move */
     uint8_t player;
 } HistoryEntry;
 
@@ -154,7 +162,7 @@ static uint32_t last_move_frames = 0;
 static uint32_t total_frames = 0;
 
 /* Add move to history - needs board to look up playthrough letters */
-static void add_to_history(const Move *m, int player, const Board *board) {
+static void add_to_history(const Move *m, int player, const Board *board, uint16_t frames) {
     /* Shift history if full */
     if (history_count >= MAX_HISTORY) {
         for (int i = 0; i < MAX_HISTORY - 1; i++) {
@@ -166,6 +174,7 @@ static void add_to_history(const Move *m, int player, const Board *board) {
     HistoryEntry *h = &history[history_count++];
     h->score = m->score;
     h->equity = m->equity;
+    h->frames = frames;
     h->player = player;
     h->blanks = 0;
 
@@ -277,6 +286,11 @@ new_game:
         last_move_frames = frame_counter - start_frames;
         total_frames += last_move_frames;
 
+#if USE_SHADOW
+        /* Show cutoff stats */
+        draw_cutoff_stats(shadow_last_move_processed, shadow_last_move_cutoff);
+#endif
+
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
             Move *best = &moves.moves[0];
@@ -304,11 +318,12 @@ new_game:
                     h->blanks = 0;
                     h->score = 0;
                     h->equity = best->equity;
+                    h->frames = (uint16_t)last_move_frames;
                     h->player = current;
                 }
             } else if (game_play_move(&game, best)) {
                 /* Add to history (after move is played, so board has the tiles) */
-                add_to_history(best, current, &game.board);
+                add_to_history(best, current, &game.board, (uint16_t)last_move_frames);
 
                 /* Update cross sets for next move */
                 board_update_cross_sets(&game.board, kwg_data);
