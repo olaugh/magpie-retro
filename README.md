@@ -128,12 +128,44 @@ In move list:
 
 ## Testing
 
-Use a Genesis emulator like:
-- [BlastEm](https://www.retrodev.com/blastem/) (recommended, most accurate)
-- [Gens](http://www.gens.me/)
-- [Exodus](https://www.exodusemulator.com/)
+### Recommended Emulator: Genesis Plus GX
 
-Or test on real hardware with a flash cart like Everdrive MD.
+The ROM exceeds 4MB due to the embedded lexicon data (KWG ~4.5MB, KLV ~1.75MB).
+Most Genesis emulators enforce the 4MB ROM limit, causing reads above 0x400000 to
+fail. **Genesis Plus GX** correctly maps larger ROMs and is recommended until
+bank switching is implemented.
+
+**Build Genesis Plus GX SDL2 from source:**
+```bash
+git clone https://github.com/ekeeke/Genesis-Plus-GX.git /tmp/genplus-gx
+cd /tmp/genplus-gx/sdl
+
+# Fix SDL2 keycode compatibility (if needed)
+sed -i '' 's/SDLK_KP\([0-9]\)/SDLK_KP_\1/g' sdl2/main.c
+
+# Build
+make -f Makefile.sdl2
+
+# Install
+cp gen_sdl2 /usr/local/bin/
+```
+
+**Run the ROM:**
+```bash
+gen_sdl2 out/scrabble-nwl23-shadow.bin
+```
+
+**Turbo/Unthrottled Mode:**
+- Press **F4** to disable sound
+- Press **F6** to enable turbo mode (~800+ fps)
+
+### Other Emulators
+
+- **OpenEmu** (macOS): Uses Genesis Plus GX core, works with large ROMs
+- **MAME**: Accurate but enforces 4MB limit; will hang at "INITIALIZING..." until bank switching is implemented
+- **BlastEm**: May have issues with JIT on macOS
+
+Or test on real hardware with a flash cart like Everdrive MD (requires bank switching for >4MB ROMs).
 
 ## License
 
