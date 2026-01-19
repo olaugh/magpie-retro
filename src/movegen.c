@@ -1194,13 +1194,13 @@ static int is_better_move(Equity new_equity, int16_t new_score,
     }
 
     /* Equal score: compare row (lower is better) */
-    if (new_row != best->row) {
-        return new_row < best->row;
+    if (new_row != best->row_start) {
+        return new_row < best->row_start;
     }
 
     /* Equal row: compare col (lower is better) */
-    if (new_col != best->col) {
-        return new_col < best->col;
+    if (new_col != best->col_start) {
+        return new_col < best->col_start;
     }
 
     /* Equal position: prefer horizontal (dir=0) over vertical (dir=1) */
@@ -1273,8 +1273,9 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     Move *move = gen->best_move;
     gen->best_equity = equity;
 
-    move->row = new_row;
-    move->col = new_col;
+    move->move_type = GAME_EVENT_TILE_PLACEMENT_MOVE;
+    move->row_start = new_row;
+    move->col_start = new_col;
     move->dir = gen->dir;
     move->tiles_played = gen->tiles_played;
     move->tiles_length = rightstrip - leftstrip + 1;
@@ -1319,7 +1320,7 @@ static void go_on(MoveGenState *gen, int col, MachineLetter letter,
         word_mult = get_word_mult(bonus);
     } else {
         /* Playing through existing tile - mark in strip */
-        gen->strip[col] = 0xFF;  /* Marker for play-through */
+        gen->strip[col] = PLAYED_THROUGH_MARKER;
     }
 
     /* Update score accumulators */
@@ -1658,9 +1659,10 @@ static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
             *best_exchange_equity = leave;
 
             /* Record this exchange */
-            best_exchange->row = 0;
-            best_exchange->col = 0;
-            best_exchange->dir = 0xFF;  /* Special marker for exchange */
+            best_exchange->move_type = GAME_EVENT_EXCHANGE;
+            best_exchange->row_start = 0;
+            best_exchange->col_start = 0;
+            best_exchange->dir = 0;
             best_exchange->tiles_played = exchange_count;
             best_exchange->tiles_length = exchange_count;
             best_exchange->score = 0;
@@ -1949,7 +1951,7 @@ void sort_moves_by_score(MoveList *moves) {
 
     /* Find index of best move */
     int best_idx = 0;
-    Score best_score = moves->moves[0].score;
+    Equity best_score = moves->moves[0].score;
 
     for (int i = 1; i < moves->count; i++) {
         if (moves->moves[i].score > best_score) {

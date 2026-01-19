@@ -51,7 +51,7 @@ static MoveList moves;
 extern void rng_seed(uint32_t seed);
 
 static void format_move(Move *m, char *buf) {
-    if (m->dir == 0xFF) {
+    if (m->move_type == GAME_EVENT_EXCHANGE) {
         /* Exchange */
         sprintf(buf, "X%d", m->tiles_played);
     } else {
@@ -68,7 +68,7 @@ static void format_move(Move *m, char *buf) {
             }
         }
         word[m->tiles_length] = '\0';
-        sprintf(buf, "%s@%d,%d%c:%d/%d", word, m->row, m->col,
+        sprintf(buf, "%s@%d,%d%c:%d/%d", word, m->row_start, m->col_start,
                 m->dir == 0 ? 'H' : 'V', m->score, m->equity);
     }
 }
@@ -110,7 +110,7 @@ static void play_game(uint32_t seed) {
             printf("%u:%d:%s\n", seed, turn, move_str);
 
             /* Play the move */
-            if (best->dir == 0xFF) {
+            if (best->move_type == GAME_EVENT_EXCHANGE) {
                 game_exchange(&game, best->tiles, best->tiles_played);
             } else {
                 game_play_move(&game, best);

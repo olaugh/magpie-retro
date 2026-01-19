@@ -281,13 +281,13 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
  * Apply a move to the board
  */
 void board_apply_move(Board *board, const Move *move) {
-    int row = move->row;
-    int col = move->col;
+    int row = move->row_start;
+    int col = move->col_start;
     int dir = move->dir;
 
     for (int i = 0; i < move->tiles_length; i++) {
         MachineLetter tile = move->tiles[i];
-        if (tile != 0xFF) {  /* Not a play-through marker */
+        if (tile != PLAYED_THROUGH_MARKER) {
             int r = (dir == DIR_HORIZONTAL) ? row : row + i;
             int c = (dir == DIR_HORIZONTAL) ? col + i : col;
             board_place_tile(board, r, c, tile);

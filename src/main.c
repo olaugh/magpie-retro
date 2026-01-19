@@ -285,8 +285,8 @@ new_game:
             Move *best = &moves.moves[0];
             int current = game.current_player;
 
-            /* Check if this is an exchange move (dir == 0xFF) */
-            if (best->dir == 0xFF) {
+            /* Check if this is an exchange move */
+            if (best->move_type == GAME_EVENT_EXCHANGE) {
                 /* Exchange tiles */
                 if (game_exchange(&game, best->tiles, best->tiles_played)) {
                     /* Add exchange to history as "-ABCDEF" */
