@@ -372,7 +372,7 @@ build/batch-nwl23-shadow/klv_data.o: build/nwl23-shadow/klv_data.c | build/batch
 
 BATCH_NWL23_SHADOW_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-shadow/%.o,$(NATIVE_SOURCES))
 
-build/batch-nwl23-shadow/test_batch: nwl23-shadow build/batch-nwl23-shadow/test_batch.o $(BATCH_NWL23_SHADOW_OBJECTS) build/batch-nwl23-shadow/kwg_data.o build/batch-nwl23-shadow/klv_data.o
+build/batch-nwl23-shadow/test_batch: build/batch-nwl23-shadow/test_batch.o $(BATCH_NWL23_SHADOW_OBJECTS) build/batch-nwl23-shadow/kwg_data.o build/batch-nwl23-shadow/klv_data.o
 	$(NATIVE_CC) -o $@ build/batch-nwl23-shadow/test_batch.o $(BATCH_NWL23_SHADOW_OBJECTS) \
 		build/batch-nwl23-shadow/kwg_data.o build/batch-nwl23-shadow/klv_data.o
 
@@ -394,7 +394,7 @@ build/batch-nwl23-noshadow/klv_data.o: build/nwl23-noshadow/klv_data.c | build/b
 
 BATCH_NWL23_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/batch-nwl23-noshadow/%.o,$(NATIVE_SOURCES))
 
-build/batch-nwl23-noshadow/test_batch: nwl23-noshadow build/batch-nwl23-noshadow/test_batch.o $(BATCH_NWL23_NOSHADOW_OBJECTS) build/batch-nwl23-noshadow/kwg_data.o build/batch-nwl23-noshadow/klv_data.o
+build/batch-nwl23-noshadow/test_batch: build/batch-nwl23-noshadow/test_batch.o $(BATCH_NWL23_NOSHADOW_OBJECTS) build/batch-nwl23-noshadow/kwg_data.o build/batch-nwl23-noshadow/klv_data.o
 	$(NATIVE_CC) -o $@ build/batch-nwl23-noshadow/test_batch.o $(BATCH_NWL23_NOSHADOW_OBJECTS) \
 		build/batch-nwl23-noshadow/kwg_data.o build/batch-nwl23-noshadow/klv_data.o
 
