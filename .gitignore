@@ -11,8 +11,6 @@ font_browser.html
 # Font data (download with scripts/download_fonts.sh)
 fonts/
 
-# Lexicon data (download from woogles-io/liwords or MAGPIE)
-data/lexica/
 
 # Test screenshots
 
