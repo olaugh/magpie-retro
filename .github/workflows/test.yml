@@ -12,9 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y python3
-
       - name: Build batch test binaries
         run: make build/batch-nwl23-shadow/test_batch build/batch-nwl23-noshadow/test_batch
 
