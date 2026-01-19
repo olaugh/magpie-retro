@@ -2,7 +2,7 @@ name: Test Shadow Algorithm
 
 on:
   push:
-    branches: [main, fix-shadow-playthrough-bounds]
+    branches: [main]
   pull_request:
     branches: [main]
 
