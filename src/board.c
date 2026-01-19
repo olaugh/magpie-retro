@@ -118,7 +118,9 @@ void board_init(Board *board) {
         board->squares[i].bonus = BONUS_LAYOUT[i];
         board->squares[i].cross_set_h = TRIVIAL_CROSS_SET;
         board->squares[i].cross_set_v = TRIVIAL_CROSS_SET;
-        board->squares[i].cross_score_h = -1;  /* -1 = no cross word */
+        /* TODO: Original magpie uses 0 and checks board adjacency at scoring time.
+         * We use -1 as sentinel for "no cross word" to skip that check. */
+        board->squares[i].cross_score_h = -1;
         board->squares[i].cross_score_v = -1;
         board->squares[i].leftx_h = TRIVIAL_CROSS_SET;
         board->squares[i].rightx_h = TRIVIAL_CROSS_SET;
