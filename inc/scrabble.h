@@ -173,6 +173,7 @@ void board_place_tile(Board *board, uint8_t row, uint8_t col, MachineLetter tile
 MachineLetter board_get_tile(const Board *board, uint8_t row, uint8_t col);
 int board_is_empty(const Board *board, uint8_t row, uint8_t col);
 void board_update_cross_sets(Board *board, const uint32_t *kwg);
+void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const Move *move);
 void board_apply_move(Board *board, const Move *move);
 
 /* Rack functions */
