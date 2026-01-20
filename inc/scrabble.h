@@ -67,27 +67,40 @@ typedef uint32_t CrossSet;
 /* Equity type - used for both scores and equity values */
 typedef int16_t Equity;
 
-/* Square on the board */
+/*
+ * Board state - Structure of Arrays (SoA) with horizontal and vertical views.
+ *
+ * This layout enables the 68000's (A0)+ auto-increment addressing mode:
+ * - Horizontal scans use h_* arrays (row-major: index = row*15 + col)
+ * - Vertical scans use v_* arrays (transposed: index = col*15 + row)
+ *
+ * Both views are kept in sync when tiles are placed.
+ */
 typedef struct {
-    MachineLetter letter;    /* Placed tile or ALPHABET_EMPTY_SQUARE_MARKER */
-    uint8_t bonus;           /* BonusType */
-    CrossSet cross_set_h;    /* Cross-set for horizontal plays */
-    CrossSet cross_set_v;    /* Cross-set for vertical plays */
-    int8_t cross_score_h;    /* Cross-word score for horizontal */
-    int8_t cross_score_v;    /* Cross-word score for vertical */
-    /* Extension sets: which letters can extend a word in each direction.
-     * leftx_h = letters that can go left when playing horizontally
-     * rightx_h = letters that can go right when playing horizontally
-     * These enable pruning: if leftx_h & rack == 0, no valid left extension. */
-    CrossSet leftx_h;        /* Left extension set for horizontal */
-    CrossSet rightx_h;       /* Right extension set for horizontal */
-    CrossSet leftx_v;        /* Left extension set for vertical */
-    CrossSet rightx_v;       /* Right extension set for vertical */
-} Square;
+    /* ---------------------------------------------------------
+     * HORIZONTAL VIEW (row-major: index = row*15 + col)
+     * Used for horizontal move generation
+     * --------------------------------------------------------- */
+    uint8_t  h_letters[BOARD_SIZE];      /* Tiles on board */
+    CrossSet h_cross_sets[BOARD_SIZE];   /* Cross-sets for horizontal plays */
+    int8_t   h_cross_scores[BOARD_SIZE]; /* Cross-word scores for horizontal */
+    CrossSet h_leftx[BOARD_SIZE];        /* Left extension sets */
+    CrossSet h_rightx[BOARD_SIZE];       /* Right extension sets */
 
-/* Board state */
-typedef struct {
-    Square squares[BOARD_SIZE];
+    /* ---------------------------------------------------------
+     * VERTICAL VIEW (transposed: index = col*15 + row)
+     * Used for vertical move generation - same data, different layout
+     * --------------------------------------------------------- */
+    uint8_t  v_letters[BOARD_SIZE];      /* Tiles (transposed) */
+    CrossSet v_cross_sets[BOARD_SIZE];   /* Cross-sets for vertical plays */
+    int8_t   v_cross_scores[BOARD_SIZE]; /* Cross-word scores for vertical */
+    CrossSet v_leftx[BOARD_SIZE];        /* Left extension sets (transposed) */
+    CrossSet v_rightx[BOARD_SIZE];       /* Right extension sets (transposed) */
+
+    /* ---------------------------------------------------------
+     * SHARED DATA (not direction-specific)
+     * --------------------------------------------------------- */
+    uint8_t bonuses[BOARD_SIZE];         /* Bonus squares (DL, TL, DW, TW) */
     uint8_t tiles_on_board;
 } Board;
 

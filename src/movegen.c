@@ -1068,7 +1068,7 @@ static void gen_shadow(MoveGenState *gen) {
     /* Check if board is empty (center square has no tile) */
     /* On empty board, only search horizontal (vertical is symmetric) */
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
-    int board_is_empty = (gen->board->squares[center_idx].letter == ALPHABET_EMPTY_SQUARE_MARKER);
+    int board_is_empty = (gen->board->h_letters[center_idx] == ALPHABET_EMPTY_SQUARE_MARKER);
     int max_dir = board_is_empty ? 1 : 2;
 
     /* Process each row in both directions (or just horizontal if empty) */
@@ -1524,52 +1524,68 @@ static void gen_for_row(MoveGenState *gen) {
 #endif
 
 /*
- * Cache a row from the board for faster access during generation
+ * Cache a row from the board for faster access during generation.
+ *
+ * With SoA layout, we just pick h_* or v_* arrays based on direction.
+ * The v_* arrays are transposed, so the same index formula works for both.
  */
 static void cache_row(MoveGenState *gen, int row, int dir) {
     gen->current_row = row;
     gen->dir = dir;
 
+    /* Base index for this row in the appropriate view */
+    int base_idx = row * BOARD_DIM;
+
+    /* Select arrays based on direction */
+    const uint8_t *letters;
+    const CrossSet *cross_sets;
+    const int8_t *cross_scores;
+    const CrossSet *leftx;
+    const CrossSet *rightx;
+
+    if (dir == DIR_HORIZONTAL) {
+        letters = gen->board->h_letters;
+        cross_sets = gen->board->h_cross_sets;
+        cross_scores = gen->board->h_cross_scores;
+        leftx = gen->board->h_leftx;
+        rightx = gen->board->h_rightx;
+    } else {
+        letters = gen->board->v_letters;
+        cross_sets = gen->board->v_cross_sets;
+        cross_scores = gen->board->v_cross_scores;
+        leftx = gen->board->v_leftx;
+        rightx = gen->board->v_rightx;
+    }
+
     for (int col = 0; col < BOARD_DIM; col++) {
+        int idx = base_idx + col;
+
+        gen->row_letters[col] = letters[idx];
+        gen->row_cross_sets[col] = cross_sets[idx];
+        gen->row_cross_scores[col] = cross_scores[idx];
+        gen->row_leftx[col] = leftx[idx];
+        gen->row_rightx[col] = rightx[idx];
+
+        /* Bonuses need physical board coordinates */
         int board_row, board_col;
         if (dir == DIR_HORIZONTAL) {
             board_row = row;
             board_col = col;
         } else {
-            board_row = col;
-            board_col = row;
+            board_row = col;  /* Transposed: algorithm row = physical col */
+            board_col = row;  /* Transposed: algorithm col = physical row */
         }
+        gen->row_bonuses[col] = gen->board->bonuses[board_row * BOARD_DIM + board_col];
 
-        int idx = board_row * BOARD_DIM + board_col;
-        const Square *sq = &gen->board->squares[idx];
-
-        gen->row_letters[col] = sq->letter;
-        gen->row_bonuses[col] = sq->bonus;
-
-        if (dir == DIR_HORIZONTAL) {
-            gen->row_cross_sets[col] = sq->cross_set_h;
-            gen->row_cross_scores[col] = sq->cross_score_h;
-            gen->row_leftx[col] = sq->leftx_h;
-            gen->row_rightx[col] = sq->rightx_h;
-        } else {
-            gen->row_cross_sets[col] = sq->cross_set_v;
-            gen->row_cross_scores[col] = sq->cross_score_v;
-            gen->row_leftx[col] = sq->leftx_v;
-            gen->row_rightx[col] = sq->rightx_v;
-        }
-
-        /* Compute anchor status: empty square adjacent to a tile.
-         * Note: Non-empty squares are NOT marked as anchors here because the
-         * recursive algorithm handles playthroughs by extending from adjacent anchors.
-         * The shadow algorithm has separate logic to handle playthrough anchors. */
+        /* Compute anchor status: empty square adjacent to a tile */
         gen->row_is_anchor[col] = 0;
-        if (sq->letter == ALPHABET_EMPTY_SQUARE_MARKER) {
-            /* Check all 4 neighbors */
+        if (letters[idx] == ALPHABET_EMPTY_SQUARE_MARKER) {
+            /* Check all 4 neighbors using h_letters (canonical view) */
             int has_neighbor = 0;
-            if (board_row > 0 && gen->board->squares[(board_row-1)*BOARD_DIM + board_col].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
-            if (board_row < BOARD_DIM-1 && gen->board->squares[(board_row+1)*BOARD_DIM + board_col].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
-            if (board_col > 0 && gen->board->squares[board_row*BOARD_DIM + board_col-1].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
-            if (board_col < BOARD_DIM-1 && gen->board->squares[board_row*BOARD_DIM + board_col+1].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_row > 0 && gen->board->h_letters[(board_row-1)*BOARD_DIM + board_col] != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_row < BOARD_DIM-1 && gen->board->h_letters[(board_row+1)*BOARD_DIM + board_col] != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_col > 0 && gen->board->h_letters[board_row*BOARD_DIM + board_col-1] != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_col < BOARD_DIM-1 && gen->board->h_letters[board_row*BOARD_DIM + board_col+1] != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
 
             if (has_neighbor) {
                 gen->row_is_anchor[col] = 1;
@@ -1860,7 +1876,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     /* Non-shadow mode: process rows in order (for validation) */
     /* Check if board is empty - skip vertical if so (symmetric) */
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
-    int board_is_empty = (board->squares[center_idx].letter == ALPHABET_EMPTY_SQUARE_MARKER);
+    int board_is_empty = (board->h_letters[center_idx] == ALPHABET_EMPTY_SQUARE_MARKER);
 
     /* Generate horizontal moves */
     for (int row = 0; row < BOARD_DIM; row++) {

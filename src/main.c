@@ -181,8 +181,8 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
         /* If tile is empty/invalid, look at the board */
         if (letter < 1 || letter > 26) {
             /* Calculate board position for this letter */
-            int r = m->row;
-            int c = m->col;
+            int r = m->row_start;
+            int c = m->col_start;
             if (m->dir == DIR_HORIZONTAL) {
                 c += i;
             } else {
@@ -190,7 +190,7 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
             }
             /* Get letter from board */
             int idx = r * BOARD_DIM + c;
-            ml = board->squares[idx].letter;
+            ml = board->h_letters[idx];
             letter = UNBLANKED(ml);
         }
 
