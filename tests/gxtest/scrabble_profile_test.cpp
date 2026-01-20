@@ -21,7 +21,7 @@
 namespace {
 
 constexpr int MAX_GAME_FRAMES = 30000;
-constexpr int NUM_GAMES = 4;
+constexpr int DEFAULT_num_games = 4;
 
 // Buffer sizes for nm output parsing
 constexpr size_t NM_OUTPUT_LINE_BUFFER_SIZE = 512;
@@ -104,9 +104,10 @@ struct AggregatedFuncStats {
 };
 
 void RunParallelProfile(const char* rom_path, const char* elf_path,
-                        const char* name, uint32_t sample_rate = 1) {
+                        const char* name, uint32_t sample_rate = 1,
+                        int num_games = DEFAULT_num_games) {
     std::cout << "\n======================================" << std::endl;
-    std::cout << name << " - " << NUM_GAMES << " Game Parallel Profile" << std::endl;
+    std::cout << name << " - " << num_games << " Game Parallel Profile" << std::endl;
     std::cout << "======================================" << std::endl;
 
     // Load symbols once to get function names for reporting
@@ -124,10 +125,10 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::cout << std::endl;
 
     // Create pipes and fork children
-    std::vector<int> read_fds(NUM_GAMES);
-    std::vector<pid_t> pids(NUM_GAMES);
+    std::vector<int> read_fds(num_games);
+    std::vector<pid_t> pids(num_games);
 
-    for (int i = 0; i < NUM_GAMES; i++) {
+    for (int i = 0; i < num_games; i++) {
         int pipefd[2];
         if (pipe(pipefd) < 0) {
             perror("pipe");
@@ -156,7 +157,7 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     uint64_t grand_total_cycles = 0;
     std::map<uint32_t, AggregatedFuncStats> aggregated_stats;
 
-    for (int i = 0; i < NUM_GAMES; i++) {
+    for (int i = 0; i < num_games; i++) {
         // Wait for child
         int status;
         if (waitpid(pids[i], &status, 0) < 0) {
@@ -210,11 +211,11 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
 
     // Print summary
     std::cout << "\n--- Summary ---" << std::endl;
-    std::cout << "Total games: " << NUM_GAMES << std::endl;
+    std::cout << "Total games: " << num_games << std::endl;
     std::cout << "Total frames: " << total_frames << std::endl;
-    std::cout << "Avg frames/game: " << static_cast<double>(total_frames) / NUM_GAMES << std::endl;
+    std::cout << "Avg frames/game: " << static_cast<double>(total_frames) / num_games << std::endl;
     std::cout << "Total cycles: " << grand_total_cycles << std::endl;
-    std::cout << "Avg cycles/game: " << static_cast<double>(grand_total_cycles) / NUM_GAMES << std::endl;
+    std::cout << "Avg cycles/game: " << static_cast<double>(grand_total_cycles) / num_games << std::endl;
 
     // Build sorted report by cycles
     struct FuncReport {
@@ -338,6 +339,12 @@ TEST(ScrabbleProfile, ShadowVsNoShadowSampled10) {
 TEST(ScrabbleProfile, ShadowVsNoShadowSampled100) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow", 100);
     RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow", 100);
+}
+
+// CSW24 profiling with 50 games at 1/100 sampling
+TEST(ScrabbleProfile, CSW24ShadowVsNoShadowSampled100) {
+    RunParallelProfile(ROM_CSW24_SHADOW, "build/csw24-shadow/scrabble.elf", "CSW24 Shadow", 100, 50);
+    RunParallelProfile(ROM_CSW24_NOSHADOW, "build/csw24-noshadow/scrabble.elf", "CSW24 NoShadow", 100, 50);
 }
 
 } // namespace
