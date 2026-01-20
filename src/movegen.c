@@ -39,6 +39,7 @@
 #if USE_TIMING
 #include <sys/time.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 static uint64_t timing_shadow_us = 0;
 static uint64_t timing_movegen_us = 0;
@@ -1905,7 +1906,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 #if USE_TIMING
 void print_timing_stats(void) {
     uint64_t total_us = timing_shadow_us + timing_movegen_us + timing_cache_row_us;
-    printf("TIMING: calls=%d shadow=%llu us movegen=%llu us cache_row=%llu us\n",
+    printf("TIMING: calls=%d shadow=%" PRIu64 " us movegen=%" PRIu64 " us cache_row=%" PRIu64 " us\n",
            timing_call_count, timing_shadow_us, timing_movegen_us, timing_cache_row_us);
     if (total_us > 0) {
         printf("TIMING: shadow=%.1f%% movegen=%.1f%% cache_row=%.1f%%\n",
