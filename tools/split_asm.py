@@ -759,6 +759,17 @@ def main():
 
     print(f"Parsing {input_file}...", file=sys.stderr)
     files = parse_objdump(input_file)
+
+    # Filter out GCC library files (soft-float, etc.) - they're huge and not useful
+    library_patterns = ['lb1sf68', 'libgcc', 'crtbegin', 'crtend']
+    filtered_files = {}
+    for filepath, functions in files.items():
+        if any(pattern in filepath for pattern in library_patterns):
+            print(f"  Skipping library file: {filepath}", file=sys.stderr)
+            continue
+        filtered_files[filepath] = functions
+    files = filtered_files
+
     print(f"Found {len(files)} source files", file=sys.stderr)
 
     binary_name = os.path.basename(input_file).replace('.lst', '.elf')
