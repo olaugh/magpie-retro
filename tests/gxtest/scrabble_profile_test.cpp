@@ -29,11 +29,12 @@ struct GameResult {
     int16_t score_p1;
     uint32_t frames;
     uint64_t total_cycles;
-    // Function stats follow as: uint32_t name_len, char name[], uint64_t cycles, uint64_t calls
+    uint32_t sample_rate;
 };
 
 // Run a single game and write results to pipe
-void RunGameInChild(int game_id, const char* rom_path, const char* elf_path, int write_fd) {
+void RunGameInChild(int game_id, const char* rom_path, const char* elf_path,
+                    uint32_t sample_rate, int write_fd) {
     GX::Emulator emu;
     if (!emu.LoadRom(rom_path)) {
         _exit(1);
@@ -46,7 +47,10 @@ void RunGameInChild(int game_id, const char* rom_path, const char* elf_path, int
 
     emu.WriteLong(Scrabble::test_seed_override, game_id);
 
-    profiler.Start(GX::ProfileMode::Simple);
+    GX::ProfileOptions opts;
+    opts.mode = GX::ProfileMode::Simple;
+    opts.sample_rate = sample_rate;
+    profiler.Start(opts);
     int result = emu.RunUntilMemoryEquals(Scrabble::test_game_over, 1, MAX_GAME_FRAMES);
     profiler.Stop();
 
@@ -61,6 +65,7 @@ void RunGameInChild(int game_id, const char* rom_path, const char* elf_path, int
     gr.score_p1 = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score));
     gr.frames = emu.ReadLong(Scrabble::total_frames);
     gr.total_cycles = profiler.GetTotalCycles();
+    gr.sample_rate = profiler.GetSampleRate();
 
     write(write_fd, &gr, sizeof(gr));
 
@@ -69,9 +74,6 @@ void RunGameInChild(int game_id, const char* rom_path, const char* elf_path, int
     uint32_t num_funcs = stats.size();
     write(write_fd, &num_funcs, sizeof(num_funcs));
 
-    // We need function names - reload symbols to iterate
-    // Actually, profiler stores functions internally, let's access via a method
-    // For now, just write addr -> stats mapping
     for (const auto& kv : stats) {
         uint32_t addr = kv.first;
         uint64_t cycles = kv.second.cycles_exclusive;
@@ -90,7 +92,8 @@ struct AggregatedFuncStats {
     uint64_t total_calls = 0;
 };
 
-void RunParallelProfile(const char* rom_path, const char* elf_path, const char* name) {
+void RunParallelProfile(const char* rom_path, const char* elf_path,
+                        const char* name, uint32_t sample_rate = 1) {
     std::cout << "\n======================================" << std::endl;
     std::cout << name << " - " << NUM_GAMES << " Game Parallel Profile" << std::endl;
     std::cout << "======================================" << std::endl;
@@ -103,6 +106,11 @@ void RunParallelProfile(const char* rom_path, const char* elf_path, const char* 
         return;
     }
     std::cout << "Loaded " << sym_count << " symbols" << std::endl;
+    std::cout << "Sample rate: 1/" << sample_rate;
+    if (sample_rate > 1) {
+        std::cout << " (estimated cycles)";
+    }
+    std::cout << std::endl;
 
     // Create pipes and fork children
     std::vector<int> read_fds(NUM_GAMES);
@@ -123,7 +131,7 @@ void RunParallelProfile(const char* rom_path, const char* elf_path, const char* 
         } else if (pid == 0) {
             // Child
             close(pipefd[0]);  // Close read end
-            RunGameInChild(i, rom_path, elf_path, pipefd[1]);
+            RunGameInChild(i, rom_path, elf_path, sample_rate, pipefd[1]);
             _exit(0);  // Should not reach here
         } else {
             // Parent
@@ -263,6 +271,7 @@ void RunParallelProfile(const char* rom_path, const char* elf_path, const char* 
               << std::endl;
 }
 
+// Full profiling (every instruction)
 TEST(ScrabbleProfile, ShadowParallel) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow");
 }
@@ -274,6 +283,18 @@ TEST(ScrabbleProfile, NoShadowParallel) {
 TEST(ScrabbleProfile, ShadowVsNoShadowParallel) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow");
     RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow");
+}
+
+// Sampled profiling (1/10) - moderate speedup with good accuracy
+TEST(ScrabbleProfile, ShadowVsNoShadowSampled10) {
+    RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow", 10);
+    RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow", 10);
+}
+
+// Sampled profiling (1/100) - fast but less accurate
+TEST(ScrabbleProfile, ShadowVsNoShadowSampled100) {
+    RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow", 100);
+    RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow", 100);
 }
 
 } // namespace
