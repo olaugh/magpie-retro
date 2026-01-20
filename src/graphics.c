@@ -735,8 +735,8 @@ void draw_board(const Board *board) {
         /* Draw squares */
         for (int col = 0; col < BOARD_DIM; col++) {
             int idx = row * BOARD_DIM + col;
-            MachineLetter ml = board->squares[idx].letter;
-            uint8_t bonus = board->squares[idx].bonus;
+            MachineLetter ml = board->h_letters[idx];
+            uint8_t bonus = board->bonuses[idx];
             int x = BOARD_LEFT + col;
             int tile;
 

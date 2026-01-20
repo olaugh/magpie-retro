@@ -160,18 +160,17 @@ Equity score_move(const Board *board, const Move *move) {
         int idx = r * BOARD_DIM + c;
 
         MachineLetter tile = move->tiles[i];
-        const Square *sq = &board->squares[idx];
 
         if (tile == PLAYED_THROUGH_MARKER) {
             /* Play-through: use existing tile, no bonus */
-            MachineLetter existing = sq->letter;
+            MachineLetter existing = board->h_letters[idx];
             int tile_score = IS_BLANKED(existing) ? 0 : TILE_SCORES[UNBLANKED(existing)];
             main_word_score += tile_score;
         } else {
             /* Fresh tile: apply bonuses */
             tiles_played++;
             int tile_score = IS_BLANKED(tile) ? 0 : TILE_SCORES[UNBLANKED(tile)];
-            uint8_t bonus = sq->bonus;
+            uint8_t bonus = board->bonuses[idx];
 
             int letter_mult = get_letter_mult(bonus);
             main_word_score += tile_score * letter_mult;
@@ -180,9 +179,9 @@ Equity score_move(const Board *board, const Move *move) {
             /* Check for cross-word */
             int8_t cross_score;
             if (move->dir == DIR_HORIZONTAL) {
-                cross_score = sq->cross_score_h;
+                cross_score = board->h_cross_scores[idx];
             } else {
-                cross_score = sq->cross_score_v;
+                cross_score = board->v_cross_scores[idx];
             }
 
             if (cross_score >= 0) {

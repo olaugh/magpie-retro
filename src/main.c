@@ -39,6 +39,7 @@ extern int game_play_move(GameState *game, const Move *move);
 extern void game_pass(GameState *game);
 extern int game_is_over(const GameState *game);
 extern void board_update_cross_sets(Board *board, const uint32_t *kwg);
+extern void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const Move *move);
 extern void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
                            const KLV *klv, const Bag *bag, MoveList *moves);
 extern void sort_moves_by_score(MoveList *moves);
@@ -181,8 +182,8 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
         /* If tile is empty/invalid, look at the board */
         if (letter < 1 || letter > 26) {
             /* Calculate board position for this letter */
-            int r = m->row;
-            int c = m->col;
+            int r = m->row_start;
+            int c = m->col_start;
             if (m->dir == DIR_HORIZONTAL) {
                 c += i;
             } else {
@@ -190,7 +191,7 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
             }
             /* Get letter from board */
             int idx = r * BOARD_DIM + c;
-            ml = board->squares[idx].letter;
+            ml = board->h_letters[idx];
             letter = UNBLANKED(ml);
         }
 
@@ -261,10 +262,10 @@ new_game:
     game.game_over = 0;
     history_count = 0;
 
-    /* Start timing from here - includes cross-sets, rendering, everything */
+    /* Start timing from here - includes rendering, movegen, everything */
     uint32_t game_start_frames = frame_counter;
 
-    board_update_cross_sets(&game.board, kwg_data);
+    /* Note: board_init already sets trivial cross-sets for empty board */
     clear_screen();
     draw_status_bar();
 
@@ -314,8 +315,8 @@ new_game:
                 /* Add to history (after move is played, so board has the tiles) */
                 add_to_history(best, current, &game.board, (uint16_t)last_move_frames);
 
-                /* Update cross sets for next move */
-                board_update_cross_sets(&game.board, kwg_data);
+                /* Update cross sets for next move (incremental) */
+                board_update_cross_sets_for_move(&game.board, kwg_data, best);
             }
         } else {
             /* No legal moves - pass */

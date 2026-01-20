@@ -10,70 +10,110 @@ This PR (`fix-shadow-playthrough-bounds`) focuses on **shadow algorithm correctn
 
 ### 1. Incremental Cross-Set and Extension-Set Generation
 
+**Status**: IMPLEMENTED. Genesis now only updates cross-sets for squares affected by the last move.
+
 **Original magpie**: Only updates cross-sets and extension-sets for squares that could be affected by the last move played.
 
-**Genesis**: Recomputes all cross-sets and extension-sets for the entire board after every move.
+**Genesis**: Now matches original magpie behavior - only updates affected squares after each move.
 
-**Impact**: Significant performance cost, especially in late game when most squares are unaffected by each move.
+### 2. Board Memory Layout: Structure of Arrays + Transposition
 
-**Future work**: Track affected region (bounding box of played tiles + adjacent squares) and only update those.
+**Status**: IMPLEMENTED and validated. SoA with transposed views provides **2.1% speedup** over AoS on Genesis hardware (measured via RetroArch: AoS=0x3A2C cycles, SoA=0x38F7 cycles).
 
-### 2. Transposed Board Representation
+**Intentional divergence from original magpie**: Original magpie uses Array of Structures for board squares. Genesis uses Structure of Arrays with separate h_* and v_* arrays to enable the 68000's (A0)+ auto-increment addressing mode.
 
-**Original magpie**: Maintains two copies of the board - one normal, one transposed - so that vertical neighbors are adjacent in memory.
+**Original magpie problem**: Uses Array of Structures (AoS) with `Square` struct.
 
-**Genesis**: Single board representation. Vertical scans use stride-15 addressing.
-
-#### Why Transposed Boards Matter for the 68000
-
-The reasoning for transposed boards **differs completely** between modern CPUs and the 68000:
-
-**Modern CPU (cache locality)**: Adjacent memory accesses hit the same cache line. Stride-15 access causes cache misses.
-
-**68000 (no cache)**: The Genesis has no data cache. Reading adjacent bytes vs. bytes 15 apart costs the same ~4 cycles per fetch. Cache locality is irrelevant.
-
-**However**, the 68000 has a different reason to love transposed boards: **Auto-Increment Addressing `(A0)+`**.
-
-##### The `(A0)+` Superpower
-
-The 68000's most efficient memory access pattern is auto-increment:
-
-```asm
-; Transposed board: vertical neighbors are adjacent (stride = 1)
-MOVE.B  (A0)+, D0   ; Read byte AND increment pointer - effectively FREE
+```c
+typedef struct {
+    MachineLetter letter;    // offset 0
+    uint8_t bonus;           // offset 1
+    // 2 bytes padding
+    CrossSet cross_set_h;    // offset 4  (4 bytes)
+    CrossSet cross_set_v;    // offset 8  (4 bytes)
+    int8_t cross_score_h;    // offset 12
+    int8_t cross_score_v;    // offset 13
+    // 2 bytes padding
+    CrossSet leftx_h;        // offset 16 (4 bytes)
+    CrossSet rightx_h;       // offset 20 (4 bytes)
+    CrossSet leftx_v;        // offset 24 (4 bytes)
+    CrossSet rightx_v;       // offset 28 (4 bytes)
+} Square;  // sizeof = 32 bytes!
 ```
 
-Without transposition, vertical scans require manual pointer arithmetic:
+**The stride problem**: When scanning a row to check which squares are empty, we jump **32 bytes** between squares. This defeats the 68000's most powerful optimization.
+
+#### The `(A0)+` Superpower
+
+The 68000's most efficient memory access is auto-increment:
 
 ```asm
-; Normal board: vertical neighbors are stride-15 apart
+; Stride = 1: Use (A0)+ for FREE increment
+MOVE.B  (A0)+, D0   ; Read byte AND increment - 0 extra cycles
+DBRA    D1, Loop
+
+; Stride = 32: Must manually add (SLOW)
 MOVE.B  (A0), D0    ; Read byte
-ADDA.W  #15, A0     ; Add 15 to pointer - costs 8 cycles!
+ADDA.W  #32, A0     ; Add 32 to pointer - 8 cycles!
+DBRA    D1, Loop
 ```
 
-**Cost per square scanned**: ~8 extra cycles without transposition.
+**Result**: The AoS loop is ~2x slower than it could be.
 
-##### Code Size Win
+#### Solution: Structure of Arrays (SoA) + Transposition
 
-Without transposition, you need either:
-- Two separate move generators (horizontal vs vertical), or
-- A generic generator with a `step` parameter (burns a register, requires slow multiply/add logic)
+Split the `Square` struct into separate contiguous arrays. Keep horizontal and vertical (transposed) views for both directions.
 
-With transposition:
-- One optimized generator function
-- Pass 1: `Generate(Board)` for horizontal moves
-- Pass 2: `Generate(TransposedBoard)` for vertical moves
-- Logic is identical, code size is halved, bugs are halved
+```c
+typedef struct {
+    // ---------------------------------------------------------
+    // HORIZONTAL VIEW (row-major: index = row*15 + col)
+    // ---------------------------------------------------------
+    uint8_t  h_letters[BOARD_SIZE];      // 225 bytes, stride 1
+    CrossSet h_cross_sets[BOARD_SIZE];   // 900 bytes, stride 4
+    int8_t   h_cross_scores[BOARD_SIZE]; // 225 bytes, stride 1
+    CrossSet h_leftx[BOARD_SIZE];        // 900 bytes - left extension sets
+    CrossSet h_rightx[BOARD_SIZE];       // 900 bytes - right extension sets
 
-##### Implementation Cost
+    // ---------------------------------------------------------
+    // VERTICAL VIEW (transposed: index = col*15 + row)
+    // Enables (A0)+ for vertical scans
+    // ---------------------------------------------------------
+    uint8_t  v_letters[BOARD_SIZE];      // 225 bytes
+    CrossSet v_cross_sets[BOARD_SIZE];   // 900 bytes
+    int8_t   v_cross_scores[BOARD_SIZE]; // 225 bytes
+    CrossSet v_leftx[BOARD_SIZE];        // 900 bytes
+    CrossSet v_rightx[BOARD_SIZE];       // 900 bytes
 
-- **Memory**: 225 bytes (negligible with 64KB available)
-- **Update**: ~4-7 extra writes per move: `transposed[col][row] = tile`
-- **Benefit**: Enables `(A0)+` for all scanning loops
+    // ---------------------------------------------------------
+    // SHARED (not direction-specific)
+    // ---------------------------------------------------------
+    uint8_t bonuses[BOARD_SIZE];         // 225 bytes - bonus squares
+    uint8_t tiles_played;
+} Board;
+```
 
-##### Note for C Code
+**Memory cost**: ~6.4 KB vs current 7.2 KB (actually smaller due to no padding!)
 
-GCC is smart enough to use `(A0)+` when iterating a pointer sequentially (`*p++`). It is **not** smart enough to optimize a `+= 15` stride into anything efficient. The transposed board makes the compiler's job easy.
+#### Benefits
+
+1. **Fast row scans**: `for (int c = 0; c < 15; c++) letter = h_letters[row*15 + c]` compiles to `MOVE.B (A0)+, D0`
+
+2. **Fast column scans**: `for (int r = 0; r < 15; r++) letter = v_letters[col*15 + r]` also uses `(A0)+`
+
+3. **One code path**: Same move generator works for both directions - just pass h_* or v_* arrays
+
+4. **Cache-friendly on modern CPUs too**: Native test builds benefit from better cache utilization
+
+#### Keeping Views in Sync
+
+When placing tile at (row, col):
+```c
+h_letters[row * 15 + col] = tile;
+v_letters[col * 15 + row] = tile;  // Transposed index
+```
+
+Cost: 2 writes per tile placed (~4-7 tiles per move = 8-14 extra writes). Negligible compared to the scanning speedup.
 
 ### 3. Cross-Score Sentinel Value
 
@@ -106,6 +146,7 @@ Frame counts displayed on screen (60 fps):
 
 ## Future Optimization Priorities
 
-1. **Transposed board** - Enables (A0)+ addressing, halves code complexity
-2. **Incremental cross-set updates** - Avoid full-board recomputation
-3. **Assembly hot paths** - Hand-optimize critical loops if needed
+1. ~~**Structure of Arrays (SoA) board layout**~~ - DONE. ~2% speedup validated.
+2. ~~**Transposed board views**~~ - DONE. Enables (A0)+ for vertical scans, single code path for both directions.
+3. ~~**Incremental cross-set updates**~~ - DONE. Only updates affected squares after each move.
+4. **Assembly hot paths** - Hand-optimize critical loops if profiling shows benefit

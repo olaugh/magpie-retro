@@ -114,45 +114,52 @@ void board_init(Board *board) {
     }
 
     for (int i = 0; i < BOARD_SIZE; i++) {
-        board->squares[i].letter = ALPHABET_EMPTY_SQUARE_MARKER;
-        board->squares[i].bonus = BONUS_LAYOUT[i];
-        board->squares[i].cross_set_h = TRIVIAL_CROSS_SET;
-        board->squares[i].cross_set_v = TRIVIAL_CROSS_SET;
-        /* TODO: Original magpie uses 0 and checks board adjacency at scoring time.
-         * We use -1 as sentinel for "no cross word" to skip that check. */
-        board->squares[i].cross_score_h = -1;
-        board->squares[i].cross_score_v = -1;
-        board->squares[i].leftx_h = TRIVIAL_CROSS_SET;
-        board->squares[i].rightx_h = TRIVIAL_CROSS_SET;
-        board->squares[i].leftx_v = TRIVIAL_CROSS_SET;
-        board->squares[i].rightx_v = TRIVIAL_CROSS_SET;
+        /* Horizontal view */
+        board->h_letters[i] = ALPHABET_EMPTY_SQUARE_MARKER;
+        board->h_cross_sets[i] = TRIVIAL_CROSS_SET;
+        board->h_cross_scores[i] = -1;  /* -1 = no cross word */
+        board->h_leftx[i] = TRIVIAL_CROSS_SET;
+        board->h_rightx[i] = TRIVIAL_CROSS_SET;
+
+        /* Vertical view (same initial values) */
+        board->v_letters[i] = ALPHABET_EMPTY_SQUARE_MARKER;
+        board->v_cross_sets[i] = TRIVIAL_CROSS_SET;
+        board->v_cross_scores[i] = -1;
+        board->v_leftx[i] = TRIVIAL_CROSS_SET;
+        board->v_rightx[i] = TRIVIAL_CROSS_SET;
+
+        /* Shared */
+        board->bonuses[i] = BONUS_LAYOUT[i];
     }
-    board->tiles_on_board = 0;
+    board->tiles_played = 0;
 }
 
 /*
- * Place a tile on the board
+ * Place a tile on the board (updates both horizontal and vertical views)
  */
 void board_place_tile(Board *board, uint8_t row, uint8_t col, MachineLetter tile) {
-    int idx = row * BOARD_DIM + col;
-    if (board->squares[idx].letter == ALPHABET_EMPTY_SQUARE_MARKER) {
-        board->tiles_on_board++;
+    int h_idx = row * BOARD_DIM + col;      /* Horizontal view index */
+    int v_idx = col * BOARD_DIM + row;      /* Vertical view index (transposed) */
+
+    if (board->h_letters[h_idx] == ALPHABET_EMPTY_SQUARE_MARKER) {
+        board->tiles_played++;
     }
-    board->squares[idx].letter = tile;
+    board->h_letters[h_idx] = tile;
+    board->v_letters[v_idx] = tile;
 }
 
 /*
  * Get tile at position
  */
 MachineLetter board_get_tile(const Board *board, uint8_t row, uint8_t col) {
-    return board->squares[row * BOARD_DIM + col].letter;
+    return board->h_letters[row * BOARD_DIM + col];
 }
 
 /*
  * Check if position is empty
  */
 int board_is_empty(const Board *board, uint8_t row, uint8_t col) {
-    return board->squares[row * BOARD_DIM + col].letter == ALPHABET_EMPTY_SQUARE_MARKER;
+    return board->h_letters[row * BOARD_DIM + col] == ALPHABET_EMPTY_SQUARE_MARKER;
 }
 
 /*
@@ -162,28 +169,28 @@ int board_is_empty(const Board *board, uint8_t row, uint8_t col) {
  * Cross-sets are for the PERPENDICULAR direction (checking cross-words).
  * Extension sets are for the MAIN word direction (checking word extensions).
  *
- * For horizontal plays:
- *   - cross_set_h comes from VERTICAL neighbors (cross-words above/below)
- *   - leftx_h, rightx_h come from HORIZONTAL neighbors (main word left/right)
+ * For horizontal plays (h_* arrays):
+ *   - h_cross_sets comes from VERTICAL neighbors (cross-words above/below)
+ *   - h_leftx, h_rightx come from HORIZONTAL neighbors (main word left/right)
  *
- * For vertical plays:
- *   - cross_set_v comes from HORIZONTAL neighbors (cross-words left/right)
- *   - leftx_v, rightx_v come from VERTICAL neighbors (main word above/below)
+ * For vertical plays (v_* arrays):
+ *   - v_cross_sets comes from HORIZONTAL neighbors (cross-words left/right)
+ *   - v_leftx, v_rightx come from VERTICAL neighbors (main word above/below)
  */
 void board_update_cross_sets(Board *board, const uint32_t *kwg) {
     for (int row = 0; row < BOARD_DIM; row++) {
         for (int col = 0; col < BOARD_DIM; col++) {
-            int idx = row * BOARD_DIM + col;
-            Square *sq = &board->squares[idx];
+            int h_idx = row * BOARD_DIM + col;  /* Horizontal view index */
+            int v_idx = col * BOARD_DIM + row;  /* Vertical view index (transposed) */
 
-            if (sq->letter != ALPHABET_EMPTY_SQUARE_MARKER) {
+            if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
                 /* Occupied squares: no cross-sets, no extension sets */
-                sq->cross_set_h = 0;
-                sq->cross_set_v = 0;
-                sq->leftx_h = 0;
-                sq->rightx_h = 0;
-                sq->leftx_v = 0;
-                sq->rightx_v = 0;
+                board->h_cross_sets[h_idx] = 0;
+                board->h_leftx[h_idx] = 0;
+                board->h_rightx[h_idx] = 0;
+                board->v_cross_sets[v_idx] = 0;
+                board->v_leftx[v_idx] = 0;
+                board->v_rightx[v_idx] = 0;
                 continue;
             }
 
@@ -193,29 +200,24 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
             int suffix_len = 0;
 
             /*
-             * VERTICAL neighbors: compute cross_set_h AND leftx_v/rightx_v
-             *
-             * For cross_set_h: prefix=above, suffix=below, find valid middle letters
-             * For extension sets (vertical plays):
-             *   - leftx_v (front hooks) = letters that can START a word ending in suffix
-             *   - rightx_v (back hooks) = letters that can CONTINUE a word starting with prefix
+             * VERTICAL neighbors: compute h_cross_sets AND v_leftx/v_rightx
              */
             for (int r = row - 1; r >= 0; r--) {
-                MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
+                MachineLetter ml = board->h_letters[r * BOARD_DIM + col];
                 if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 prefix[prefix_len++] = ml;
             }
             for (int r = row + 1; r < BOARD_DIM; r++) {
-                MachineLetter ml = board->squares[r * BOARD_DIM + col].letter;
+                MachineLetter ml = board->h_letters[r * BOARD_DIM + col];
                 if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 suffix[suffix_len++] = ml;
             }
 
             if (prefix_len == 0 && suffix_len == 0) {
-                sq->cross_set_h = TRIVIAL_CROSS_SET;
-                sq->cross_score_h = -1;
-                sq->leftx_v = TRIVIAL_CROSS_SET;
-                sq->rightx_v = TRIVIAL_CROSS_SET;
+                board->h_cross_sets[h_idx] = TRIVIAL_CROSS_SET;
+                board->h_cross_scores[h_idx] = -1;
+                board->v_leftx[v_idx] = TRIVIAL_CROSS_SET;
+                board->v_rightx[v_idx] = TRIVIAL_CROSS_SET;
             } else {
                 /* Reverse prefix (collected bottom-to-top, need top-to-bottom) */
                 for (int i = 0; i < prefix_len / 2; i++) {
@@ -223,39 +225,35 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
                     prefix[i] = prefix[prefix_len - 1 - i];
                     prefix[prefix_len - 1 - i] = tmp;
                 }
-                sq->cross_set_h = compute_cross_set(kwg, prefix, prefix_len,
-                                                     suffix, suffix_len,
-                                                     &sq->cross_score_h);
-                /* Extension sets for vertical plays:
-                 * prefix = tiles above, suffix = tiles below
-                 * leftx_v = front hooks for suffix (what can start a word going through suffix)
-                 * rightx_v = back hooks for prefix (what can continue after prefix) */
+                board->h_cross_sets[h_idx] = compute_cross_set(kwg, prefix, prefix_len,
+                                                                suffix, suffix_len,
+                                                                &board->h_cross_scores[h_idx]);
                 compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
-                                        &sq->leftx_v, &sq->rightx_v);
+                                        &board->v_leftx[v_idx], &board->v_rightx[v_idx]);
             }
 
             /*
-             * HORIZONTAL neighbors: compute cross_set_v AND leftx_h/rightx_h
+             * HORIZONTAL neighbors: compute v_cross_sets AND h_leftx/h_rightx
              */
             prefix_len = 0;
             suffix_len = 0;
 
             for (int c = col - 1; c >= 0; c--) {
-                MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
+                MachineLetter ml = board->h_letters[row * BOARD_DIM + c];
                 if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 prefix[prefix_len++] = ml;
             }
             for (int c = col + 1; c < BOARD_DIM; c++) {
-                MachineLetter ml = board->squares[row * BOARD_DIM + c].letter;
+                MachineLetter ml = board->h_letters[row * BOARD_DIM + c];
                 if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 suffix[suffix_len++] = ml;
             }
 
             if (prefix_len == 0 && suffix_len == 0) {
-                sq->cross_set_v = TRIVIAL_CROSS_SET;
-                sq->cross_score_v = -1;
-                sq->leftx_h = TRIVIAL_CROSS_SET;
-                sq->rightx_h = TRIVIAL_CROSS_SET;
+                board->v_cross_sets[v_idx] = TRIVIAL_CROSS_SET;
+                board->v_cross_scores[v_idx] = -1;
+                board->h_leftx[h_idx] = TRIVIAL_CROSS_SET;
+                board->h_rightx[h_idx] = TRIVIAL_CROSS_SET;
             } else {
                 /* Reverse prefix (collected right-to-left, need left-to-right) */
                 for (int i = 0; i < prefix_len / 2; i++) {
@@ -263,16 +261,274 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
                     prefix[i] = prefix[prefix_len - 1 - i];
                     prefix[prefix_len - 1 - i] = tmp;
                 }
-                sq->cross_set_v = compute_cross_set(kwg, prefix, prefix_len,
-                                                     suffix, suffix_len,
-                                                     &sq->cross_score_v);
-                /* Extension sets for horizontal plays:
-                 * prefix = tiles left, suffix = tiles right
-                 * leftx_h = front hooks for suffix (what can start a word going through suffix)
-                 * rightx_h = back hooks for prefix (what can continue after prefix) */
+                board->v_cross_sets[v_idx] = compute_cross_set(kwg, prefix, prefix_len,
+                                                                suffix, suffix_len,
+                                                                &board->v_cross_scores[v_idx]);
                 compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
-                                        &sq->leftx_h, &sq->rightx_h);
+                                        &board->h_leftx[h_idx], &board->h_rightx[h_idx]);
             }
+        }
+    }
+}
+
+/*
+ * Helper: Clear all cross-sets and extension sets for an occupied square.
+ */
+static void clear_square_sets(Board *board, int row, int col) {
+    int h_idx = row * BOARD_DIM + col;
+    int v_idx = col * BOARD_DIM + row;
+    board->h_cross_sets[h_idx] = 0;
+    board->h_leftx[h_idx] = 0;
+    board->h_rightx[h_idx] = 0;
+    board->v_cross_sets[v_idx] = 0;
+    board->v_leftx[v_idx] = 0;
+    board->v_rightx[v_idx] = 0;
+}
+
+/*
+ * Helper: Update sets affected by vertical neighbor changes.
+ * Called when tiles above/below this square changed.
+ * Updates: h_cross_sets, h_cross_scores, v_leftx, v_rightx
+ */
+static void update_square_vertical(Board *board, const uint32_t *kwg, int row, int col) {
+    /* Skip out-of-bounds squares */
+    if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
+        return;
+    }
+
+    int h_idx = row * BOARD_DIM + col;
+    int v_idx = col * BOARD_DIM + row;
+
+    /* Occupied squares: clear all sets */
+    if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
+        clear_square_sets(board, row, col);
+        return;
+    }
+
+    MachineLetter prefix[BOARD_DIM];
+    MachineLetter suffix[BOARD_DIM];
+    int prefix_len = 0;
+    int suffix_len = 0;
+
+    /* Scan vertical neighbors */
+    for (int r = row - 1; r >= 0; r--) {
+        MachineLetter ml = board->h_letters[r * BOARD_DIM + col];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        prefix[prefix_len++] = ml;
+    }
+    for (int r = row + 1; r < BOARD_DIM; r++) {
+        MachineLetter ml = board->h_letters[r * BOARD_DIM + col];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        suffix[suffix_len++] = ml;
+    }
+
+    if (prefix_len == 0 && suffix_len == 0) {
+        board->h_cross_sets[h_idx] = TRIVIAL_CROSS_SET;
+        board->h_cross_scores[h_idx] = -1;
+        board->v_leftx[v_idx] = TRIVIAL_CROSS_SET;
+        board->v_rightx[v_idx] = TRIVIAL_CROSS_SET;
+    } else {
+        /* Reverse prefix */
+        for (int i = 0; i < prefix_len / 2; i++) {
+            MachineLetter tmp = prefix[i];
+            prefix[i] = prefix[prefix_len - 1 - i];
+            prefix[prefix_len - 1 - i] = tmp;
+        }
+        board->h_cross_sets[h_idx] = compute_cross_set(kwg, prefix, prefix_len,
+                                                        suffix, suffix_len,
+                                                        &board->h_cross_scores[h_idx]);
+        compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
+                                &board->v_leftx[v_idx], &board->v_rightx[v_idx]);
+    }
+}
+
+/*
+ * Helper: Update sets affected by horizontal neighbor changes.
+ * Called when tiles left/right of this square changed.
+ * Updates: v_cross_sets, v_cross_scores, h_leftx, h_rightx
+ */
+static void update_square_horizontal(Board *board, const uint32_t *kwg, int row, int col) {
+    /* Skip out-of-bounds squares */
+    if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
+        return;
+    }
+
+    int h_idx = row * BOARD_DIM + col;
+    int v_idx = col * BOARD_DIM + row;
+
+    /* Occupied squares: clear all sets */
+    if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
+        clear_square_sets(board, row, col);
+        return;
+    }
+
+    MachineLetter prefix[BOARD_DIM];
+    MachineLetter suffix[BOARD_DIM];
+    int prefix_len = 0;
+    int suffix_len = 0;
+
+    /* Scan horizontal neighbors */
+    for (int c = col - 1; c >= 0; c--) {
+        MachineLetter ml = board->h_letters[row * BOARD_DIM + c];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        prefix[prefix_len++] = ml;
+    }
+    for (int c = col + 1; c < BOARD_DIM; c++) {
+        MachineLetter ml = board->h_letters[row * BOARD_DIM + c];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        suffix[suffix_len++] = ml;
+    }
+
+    if (prefix_len == 0 && suffix_len == 0) {
+        board->v_cross_sets[v_idx] = TRIVIAL_CROSS_SET;
+        board->v_cross_scores[v_idx] = -1;
+        board->h_leftx[h_idx] = TRIVIAL_CROSS_SET;
+        board->h_rightx[h_idx] = TRIVIAL_CROSS_SET;
+    } else {
+        /* Reverse prefix */
+        for (int i = 0; i < prefix_len / 2; i++) {
+            MachineLetter tmp = prefix[i];
+            prefix[i] = prefix[prefix_len - 1 - i];
+            prefix[prefix_len - 1 - i] = tmp;
+        }
+        board->v_cross_sets[v_idx] = compute_cross_set(kwg, prefix, prefix_len,
+                                                        suffix, suffix_len,
+                                                        &board->v_cross_scores[v_idx]);
+        compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
+                                &board->h_leftx[h_idx], &board->h_rightx[h_idx]);
+    }
+}
+
+/*
+ * Helper: Update cross-sets and extension sets for a single square.
+ * This is the core logic extracted from board_update_cross_sets.
+ * Updates BOTH directions - use direction-specific functions when possible.
+ */
+static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
+    /* Skip out-of-bounds squares */
+    if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
+        return;
+    }
+
+    int h_idx = row * BOARD_DIM + col;
+
+    /* Occupied squares: clear all sets */
+    if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
+        clear_square_sets(board, row, col);
+        return;
+    }
+
+    /* Update both directions */
+    update_square_vertical(board, kwg, row, col);
+    update_square_horizontal(board, kwg, row, col);
+}
+
+/*
+ * Find word edge in a direction.
+ * Returns the column (for horizontal) or row (for vertical) of the last tile
+ * in that direction. Returns the starting position if no tiles in that direction.
+ */
+static int find_word_edge(const Board *board, int row, int col, int dir, int step) {
+    /* step = -1 for left/up, +1 for right/down */
+    if (dir == DIR_HORIZONTAL) {
+        int c = col + step;
+        while (c >= 0 && c < BOARD_DIM) {
+            if (board->h_letters[row * BOARD_DIM + c] == ALPHABET_EMPTY_SQUARE_MARKER) {
+                return c - step;
+            }
+            c += step;
+        }
+        return c - step;
+    } else {
+        int r = row + step;
+        while (r >= 0 && r < BOARD_DIM) {
+            if (board->h_letters[r * BOARD_DIM + col] == ALPHABET_EMPTY_SQUARE_MARKER) {
+                return r - step;
+            }
+            r += step;
+        }
+        return r - step;
+    }
+}
+
+/*
+ * Incremental cross-set update after a move is played.
+ * Only updates squares affected by the move, not the entire board.
+ *
+ * Affected squares:
+ * 1. Main direction: squares from (start - 1) to (start + length) in the row/col
+ * 2. Perpendicular: for each newly placed tile, update cross-word endpoints
+ *
+ * Optimization: Uses direction-specific update functions to avoid redundant
+ * GADDAG traversals. When only horizontal neighbors changed, only update the
+ * sets that depend on horizontal neighbors (and vice versa).
+ */
+void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const Move *move) {
+    int row_start = move->row_start;
+    int col_start = move->col_start;
+    int dir = move->dir;
+    int tiles_length = move->tiles_length;
+
+    if (dir == DIR_HORIZONTAL) {
+        /*
+         * Horizontal move: main word runs left-to-right in row row_start
+         * For squares in the main row, horizontal neighbors changed.
+         */
+
+        /* Update squares in the main row (before and after the word) */
+        for (int c = col_start - 1; c <= col_start + tiles_length; c++) {
+            if (c >= 0 && c < BOARD_DIM) {
+                /* Horizontal neighbors changed → update v_cross_sets, h_leftx, h_rightx */
+                update_square_horizontal(board, kwg, row_start, c);
+            }
+        }
+
+        /* For each newly placed tile, update cross-word endpoints */
+        for (int i = 0; i < tiles_length; i++) {
+            if (move->tiles[i] == PLAYED_THROUGH_MARKER) {
+                continue;  /* Skip played-through tiles */
+            }
+            int c = col_start + i;
+
+            /* Find vertical word edges at this column */
+            int top_row = find_word_edge(board, row_start, c, DIR_VERTICAL, -1);
+            int bot_row = find_word_edge(board, row_start, c, DIR_VERTICAL, +1);
+
+            /* Update squares at the ends of the cross-word.
+             * Vertical neighbors changed → update h_cross_sets, v_leftx, v_rightx */
+            update_square_vertical(board, kwg, top_row - 1, c);  /* Above the cross-word */
+            update_square_vertical(board, kwg, bot_row + 1, c);  /* Below the cross-word */
+        }
+
+    } else {
+        /*
+         * Vertical move: main word runs top-to-bottom in column col_start
+         * For squares in the main column, vertical neighbors changed.
+         */
+
+        /* Update squares in the main column (before and after the word) */
+        for (int r = row_start - 1; r <= row_start + tiles_length; r++) {
+            if (r >= 0 && r < BOARD_DIM) {
+                /* Vertical neighbors changed → update h_cross_sets, v_leftx, v_rightx */
+                update_square_vertical(board, kwg, r, col_start);
+            }
+        }
+
+        /* For each newly placed tile, update cross-word endpoints */
+        for (int i = 0; i < tiles_length; i++) {
+            if (move->tiles[i] == PLAYED_THROUGH_MARKER) {
+                continue;  /* Skip played-through tiles */
+            }
+            int r = row_start + i;
+
+            /* Find horizontal word edges at this row */
+            int left_col = find_word_edge(board, r, col_start, DIR_HORIZONTAL, -1);
+            int right_col = find_word_edge(board, r, col_start, DIR_HORIZONTAL, +1);
+
+            /* Update squares at the ends of the cross-word.
+             * Horizontal neighbors changed → update v_cross_sets, h_leftx, h_rightx */
+            update_square_horizontal(board, kwg, r, left_col - 1);   /* Left of the cross-word */
+            update_square_horizontal(board, kwg, r, right_col + 1);  /* Right of the cross-word */
         }
     }
 }

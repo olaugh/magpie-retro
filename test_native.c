@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
                 game_exchange(&game, best->tiles, best->tiles_played);
             } else {
                 game_play_move(&game, best);
-                board_update_cross_sets(&game.board, kwg_data);
+                board_update_cross_sets_for_move(&game.board, kwg_data, best);
             }
         } else {
             printf("No moves - passing\n");
