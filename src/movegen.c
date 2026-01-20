@@ -1592,7 +1592,7 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
             }
 
             /* Special case: center square is anchor on empty board */
-            if (board_row == 7 && board_col == 7 && gen->board->tiles_on_board == 0) {
+            if (board_row == 7 && board_col == 7 && gen->board->tiles_played == 0) {
                 gen->row_is_anchor[col] = 1;
             }
         }

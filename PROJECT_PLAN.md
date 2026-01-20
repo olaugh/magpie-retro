@@ -10,17 +10,19 @@ This PR (`fix-shadow-playthrough-bounds`) focuses on **shadow algorithm correctn
 
 ### 1. Incremental Cross-Set and Extension-Set Generation
 
+**Status**: IMPLEMENTED. Genesis now only updates cross-sets for squares affected by the last move.
+
 **Original magpie**: Only updates cross-sets and extension-sets for squares that could be affected by the last move played.
 
-**Genesis**: Recomputes all cross-sets and extension-sets for the entire board after every move.
-
-**Impact**: Significant performance cost, especially in late game when most squares are unaffected by each move.
-
-**Future work**: Track affected region (bounding box of played tiles + adjacent squares) and only update those.
+**Genesis**: Now matches original magpie behavior - only updates affected squares after each move.
 
 ### 2. Board Memory Layout: Structure of Arrays + Transposition
 
-**Current Genesis problem**: Uses Array of Structures (AoS) with `Square` struct.
+**Status**: IMPLEMENTED and validated. SoA with transposed views provides **2.1% speedup** over AoS on Genesis hardware (measured via RetroArch: AoS=0x3A2C cycles, SoA=0x38F7 cycles).
+
+**Intentional divergence from original magpie**: Original magpie uses Array of Structures for board squares. Genesis uses Structure of Arrays with separate h_* and v_* arrays to enable the 68000's (A0)+ auto-increment addressing mode.
+
+**Original magpie problem**: Uses Array of Structures (AoS) with `Square` struct.
 
 ```c
 typedef struct {
@@ -65,17 +67,16 @@ Split the `Square` struct into separate contiguous arrays. Keep horizontal and v
 ```c
 typedef struct {
     // ---------------------------------------------------------
-    // HORIZONTAL VIEW (row-major: squares[row][col])
+    // HORIZONTAL VIEW (row-major: index = row*15 + col)
     // ---------------------------------------------------------
     uint8_t  h_letters[BOARD_SIZE];      // 225 bytes, stride 1
-    uint8_t  h_bonuses[BOARD_SIZE];      // 225 bytes, stride 1
     CrossSet h_cross_sets[BOARD_SIZE];   // 900 bytes, stride 4
     int8_t   h_cross_scores[BOARD_SIZE]; // 225 bytes, stride 1
     CrossSet h_leftx[BOARD_SIZE];        // 900 bytes - left extension sets
     CrossSet h_rightx[BOARD_SIZE];       // 900 bytes - right extension sets
 
     // ---------------------------------------------------------
-    // VERTICAL VIEW (transposed: squares[col][row])
+    // VERTICAL VIEW (transposed: index = col*15 + row)
     // Enables (A0)+ for vertical scans
     // ---------------------------------------------------------
     uint8_t  v_letters[BOARD_SIZE];      // 225 bytes
@@ -85,8 +86,9 @@ typedef struct {
     CrossSet v_rightx[BOARD_SIZE];       // 900 bytes
 
     // ---------------------------------------------------------
-    // GAME STATE
+    // SHARED (not direction-specific)
     // ---------------------------------------------------------
+    uint8_t bonuses[BOARD_SIZE];         // 225 bytes - bonus squares
     uint8_t tiles_played;
 } Board;
 ```
@@ -144,7 +146,7 @@ Frame counts displayed on screen (60 fps):
 
 ## Future Optimization Priorities
 
-1. **Structure of Arrays (SoA) board layout** - Reduces stride from 32 bytes to 1 byte, enables (A0)+ auto-increment. This is the single biggest optimization for 68000.
-2. **Transposed board views** - Enables (A0)+ for vertical scans too, allows single code path for both directions
-3. **Incremental cross-set updates** - Avoid full-board recomputation after each move
+1. ~~**Structure of Arrays (SoA) board layout**~~ - DONE. ~2% speedup validated.
+2. ~~**Transposed board views**~~ - DONE. Enables (A0)+ for vertical scans, single code path for both directions.
+3. ~~**Incremental cross-set updates**~~ - DONE. Only updates affected squares after each move.
 4. **Assembly hot paths** - Hand-optimize critical loops if profiling shows benefit

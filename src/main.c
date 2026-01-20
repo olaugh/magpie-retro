@@ -262,10 +262,10 @@ new_game:
     game.game_over = 0;
     history_count = 0;
 
-    /* Start timing from here - includes cross-sets, rendering, everything */
+    /* Start timing from here - includes rendering, movegen, everything */
     uint32_t game_start_frames = frame_counter;
 
-    board_update_cross_sets(&game.board, kwg_data);
+    /* Note: board_init already sets trivial cross-sets for empty board */
     clear_screen();
     draw_status_bar();
 

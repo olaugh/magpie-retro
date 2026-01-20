@@ -131,7 +131,7 @@ void board_init(Board *board) {
         /* Shared */
         board->bonuses[i] = BONUS_LAYOUT[i];
     }
-    board->tiles_on_board = 0;
+    board->tiles_played = 0;
 }
 
 /*
@@ -142,7 +142,7 @@ void board_place_tile(Board *board, uint8_t row, uint8_t col, MachineLetter tile
     int v_idx = col * BOARD_DIM + row;      /* Vertical view index (transposed) */
 
     if (board->h_letters[h_idx] == ALPHABET_EMPTY_SQUARE_MARKER) {
-        board->tiles_on_board++;
+        board->tiles_played++;
     }
     board->h_letters[h_idx] = tile;
     board->v_letters[v_idx] = tile;

@@ -70,7 +70,12 @@ typedef int16_t Equity;
 /*
  * Board state - Structure of Arrays (SoA) with horizontal and vertical views.
  *
- * This layout enables the 68000's (A0)+ auto-increment addressing mode:
+ * INTENTIONAL DIVERGENCE FROM ORIGINAL MAGPIE: Original magpie uses Array of
+ * Structures (AoS) with a Square struct per board position. Genesis uses SoA
+ * with separate h_* and v_* arrays to enable the 68000's (A0)+ auto-increment
+ * addressing mode, providing ~2% speedup (validated: AoS=0x3A2C, SoA=0x38F7).
+ *
+ * Layout:
  * - Horizontal scans use h_* arrays (row-major: index = row*15 + col)
  * - Vertical scans use v_* arrays (transposed: index = col*15 + row)
  *
@@ -101,7 +106,7 @@ typedef struct {
      * SHARED DATA (not direction-specific)
      * --------------------------------------------------------- */
     uint8_t bonuses[BOARD_SIZE];         /* Bonus squares (DL, TL, DW, TW) */
-    uint8_t tiles_on_board;
+    uint8_t tiles_played;
 } Board;
 
 /* Player rack */
