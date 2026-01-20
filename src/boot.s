@@ -102,9 +102,10 @@ _entry:
     move.l  #0x53454741, 0xA14000    | Write "SEGA" to TMSS register
 skip_tmss:
 
-    | Clear work RAM (0xFF0000-0xFFFFFF)
+    | Clear work RAM (0xFF0000-0xFFFFF0)
+    | Reserve last 16 bytes (0xFFFFF0-0xFFFFFF) for gxtest hooks
     lea     0xFF0000, %a0
-    move.w  #0x3FFF, %d0
+    move.w  #0x3FFB, %d0        | 16380 longwords = 65520 bytes (leaves 16 bytes)
 clear_ram:
     clr.l   (%a0)+
     dbra    %d0, clear_ram
