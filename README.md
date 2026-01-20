@@ -71,7 +71,13 @@ magpie-genesis/
 │   └── libc.c           # Minimal libc (memset, memcpy)
 ├── data/lexica/         # Lexicon data (checked in)
 │   └── NWL23.kwg        # NWL23 GADDAG (~4.7 MB)
-├── test_batch.c         # Batch game comparison test
+├── gxtest/              # Headless Genesis emulator test harness (submodule)
+├── tests/gxtest/        # Automated ROM tests
+│   ├── scrabble_test.cpp        # Correctness tests
+│   └── scrabble_profile_test.cpp # CPU cycle profiling
+├── docs/
+│   └── PROFILING.md     # Profiling results and analysis
+├── test_batch.c         # Batch game comparison test (native)
 ├── Makefile
 └── linker.ld            # 68000 linker script
 ```
@@ -100,11 +106,50 @@ KLV (K Leave Values) table. Values are in eighths of a point for integer math.
 
 ## Testing
 
+### Manual Testing
+
 Use a Genesis emulator:
 - [BlastEm](https://www.retrodev.com/blastem/) (recommended)
 - [Genesis Plus GX](https://github.com/ekeeke/Genesis-Plus-GX)
 
 Or test on real hardware with a flash cart.
+
+### Automated Testing with gxtest
+
+The project uses [gxtest](https://github.com/olaugh/gxtest), a headless Genesis
+Plus GX test harness, for automated correctness and performance testing.
+
+```bash
+# Build ROMs first
+make
+
+# Run correctness tests (25 games each for shadow/noshadow, NWL23/CSW24)
+bazel test //tests/gxtest:scrabble_test --test_output=all
+
+# Run CPU cycle profiling (manual test, not in CI)
+bazel test //tests/gxtest:scrabble_profile_test --test_output=all
+```
+
+The correctness tests verify that shadow and noshadow builds produce identical
+game results across multiple random seeds.
+
+### CPU Profiling
+
+The profiler hooks into Genesis Plus GX's native CPU execution to track 68k
+cycles per function. See [docs/PROFILING.md](docs/PROFILING.md) for detailed
+profiling results.
+
+```bash
+# Full profiling (every instruction, ~100s)
+bazel test //tests/gxtest:scrabble_profile_test \
+    --test_filter="ScrabbleProfile.ShadowVsNoShadowParallel" \
+    --test_output=all
+
+# Sampled profiling (1/10, ~16s)
+bazel test //tests/gxtest:scrabble_profile_test \
+    --test_filter="ScrabbleProfile.ShadowVsNoShadowSampled10" \
+    --test_output=all
+```
 
 ## Credits
 
