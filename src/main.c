@@ -145,6 +145,7 @@ typedef struct {
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
     int16_t score;
     int16_t equity;    /* Equity in eighths of a point */
+    uint16_t frames;   /* Frames elapsed finding this move */
     uint8_t player;
 } HistoryEntry;
 
@@ -154,7 +155,7 @@ static uint32_t last_move_frames = 0;
 static uint32_t total_frames = 0;
 
 /* Add move to history - needs board to look up playthrough letters */
-static void add_to_history(const Move *m, int player, const Board *board) {
+static void add_to_history(const Move *m, int player, const Board *board, uint16_t frames) {
     /* Shift history if full */
     if (history_count >= MAX_HISTORY) {
         for (int i = 0; i < MAX_HISTORY - 1; i++) {
@@ -166,6 +167,7 @@ static void add_to_history(const Move *m, int player, const Board *board) {
     HistoryEntry *h = &history[history_count++];
     h->score = m->score;
     h->equity = m->equity;
+    h->frames = frames;
     h->player = player;
     h->blanks = 0;
 
@@ -258,7 +260,9 @@ new_game:
     game.passes = 0;
     game.game_over = 0;
     history_count = 0;
-    total_frames = 0;
+
+    /* Start timing from here - includes cross-sets, rendering, everything */
+    uint32_t game_start_frames = frame_counter;
 
     board_update_cross_sets(&game.board, kwg_data);
     clear_screen();
@@ -275,15 +279,14 @@ new_game:
                       &game.players[game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
         last_move_frames = frame_counter - start_frames;
-        total_frames += last_move_frames;
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */
             Move *best = &moves.moves[0];
             int current = game.current_player;
 
-            /* Check if this is an exchange move (dir == 0xFF) */
-            if (best->dir == 0xFF) {
+            /* Check if this is an exchange move */
+            if (best->move_type == GAME_EVENT_EXCHANGE) {
                 /* Exchange tiles */
                 if (game_exchange(&game, best->tiles, best->tiles_played)) {
                     /* Add exchange to history as "-ABCDEF" */
@@ -304,11 +307,12 @@ new_game:
                     h->blanks = 0;
                     h->score = 0;
                     h->equity = best->equity;
+                    h->frames = (uint16_t)last_move_frames;
                     h->player = current;
                 }
             } else if (game_play_move(&game, best)) {
                 /* Add to history (after move is played, so board has the tiles) */
-                add_to_history(best, current, &game.board);
+                add_to_history(best, current, &game.board, (uint16_t)last_move_frames);
 
                 /* Update cross sets for next move */
                 board_update_cross_sets(&game.board, kwg_data);
@@ -324,6 +328,9 @@ new_game:
 
     /* Game over - show final state with total time */
     update_display(&game, history, history_count, last_move_frames);
+
+    /* Calculate total frames (all-inclusive: cross-sets, rendering, movegen) */
+    total_frames = frame_counter - game_start_frames;
 
     /* Display total frames below rack (row 22) */
     draw_string(0, 22, "FRAMES:", 0);

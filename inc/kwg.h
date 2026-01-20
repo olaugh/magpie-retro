@@ -157,4 +157,16 @@ CrossSet compute_cross_set(const uint32_t *kwg,
                            const MachineLetter *suffix, int suffix_len,
                            int8_t *cross_score);
 
+/*
+ * Compute extension sets for a position given left and right tiles
+ * in the MAIN word direction (not the cross direction).
+ *
+ * leftx = "front hooks" - letters that can go BEFORE right_tiles
+ * rightx = "back hooks" - letters that can go AFTER left_tiles
+ */
+void compute_extension_sets(const uint32_t *kwg,
+                            const MachineLetter *left_tiles, int left_len,
+                            const MachineLetter *right_tiles, int right_len,
+                            CrossSet *leftx, CrossSet *rightx);
+
 #endif /* KWG_H */

@@ -96,7 +96,7 @@ void bag_shuffle(Bag *bag) {
 }
 
 MachineLetter bag_draw(Bag *bag) {
-    if (bag->count == 0) return EMPTY_SQUARE;  /* Bag empty */
+    if (bag->count == 0) return ALPHABET_EMPTY_SQUARE_MARKER;  /* Bag empty */
     return bag->tiles[--bag->count];
 }
 
@@ -145,14 +145,14 @@ static int get_word_mult(uint8_t bonus) {
  * Score a move on the board
  * Assumes the move is valid
  */
-Score score_move(const Board *board, const Move *move) {
-    Score main_word_score = 0;
-    Score cross_word_score = 0;
+Equity score_move(const Board *board, const Move *move) {
+    Equity main_word_score = 0;
+    Equity cross_word_score = 0;
     int word_multiplier = 1;
     int tiles_played = 0;
 
-    int row = move->row;
-    int col = move->col;
+    int row = move->row_start;
+    int col = move->col_start;
 
     for (int i = 0; i < move->tiles_length; i++) {
         int r = (move->dir == DIR_HORIZONTAL) ? row : row + i;
@@ -162,7 +162,7 @@ Score score_move(const Board *board, const Move *move) {
         MachineLetter tile = move->tiles[i];
         const Square *sq = &board->squares[idx];
 
-        if (tile == 0xFF) {
+        if (tile == PLAYED_THROUGH_MARKER) {
             /* Play-through: use existing tile, no bonus */
             MachineLetter existing = sq->letter;
             int tile_score = IS_BLANKED(existing) ? 0 : TILE_SCORES[UNBLANKED(existing)];
@@ -194,7 +194,7 @@ Score score_move(const Board *board, const Move *move) {
         }
     }
 
-    Score total = main_word_score * word_multiplier + cross_word_score;
+    Equity total = main_word_score * word_multiplier + cross_word_score;
 
     /* Bingo bonus */
     if (tiles_played == RACK_SIZE) {
@@ -236,8 +236,8 @@ int game_play_move(GameState *game, const Move *move) {
     /* Remove tiles from rack and place on board */
     for (int i = 0; i < move->tiles_length; i++) {
         MachineLetter tile = move->tiles[i];
-        if (tile != 0xFF) {  /* Not a play-through */
-            MachineLetter rack_tile = IS_BLANKED(tile) ? BLANK_TILE : tile;
+        if (tile != PLAYED_THROUGH_MARKER) {
+            MachineLetter rack_tile = IS_BLANKED(tile) ? BLANK_MACHINE_LETTER : tile;
             if (!rack_remove_tile(&player->rack, rack_tile)) {
                 return 0;  /* Tile not in rack */
             }

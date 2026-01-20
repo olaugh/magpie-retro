@@ -648,6 +648,44 @@ void draw_hex(int x, int y, uint32_t num, int pal) {
     }
 }
 
+/* Draw exactly n hex digits (with leading zeros) */
+static void draw_hex_n(int x, int y, uint32_t num, int n, int pal) {
+    static const char hex_chars[] = "0123456789ABCDEF";
+    for (int i = n - 1; i >= 0; i--) {
+        draw_char(x + i, y, hex_chars[num & 0xF], pal);
+        num >>= 4;
+    }
+}
+
+/* Draw 3-digit decimal number (  0-999, with leading spaces) */
+/* Uses repeated subtraction instead of division for M68000 */
+static void draw_number_3d(int x, int y, int num, int pal) {
+    if (num < 0) num = 0;
+    if (num > 999) num = 999;
+    int hundreds = 0;
+    while (num >= 100) {
+        hundreds++;
+        num -= 100;
+    }
+    int tens = 0;
+    while (num >= 10) {
+        tens++;
+        num -= 10;
+    }
+    /* Leading spaces instead of zeros */
+    if (hundreds > 0) {
+        draw_char(x, y, '0' + hundreds, pal);
+        draw_char(x + 1, y, '0' + tens, pal);
+    } else if (tens > 0) {
+        draw_char(x, y, ' ', pal);
+        draw_char(x + 1, y, '0' + tens, pal);
+    } else {
+        draw_char(x, y, ' ', pal);
+        draw_char(x + 1, y, ' ', pal);
+    }
+    draw_char(x + 2, y, '0' + num, pal);
+}
+
 /* Clear screen */
 void clear_screen(void) {
     vdp_set_vram_write(0xC000);
@@ -702,7 +740,7 @@ void draw_board(const Board *board) {
             int x = BOARD_LEFT + col;
             int tile;
 
-            if (ml != EMPTY_SQUARE) {
+            if (ml != ALPHABET_EMPTY_SQUARE_MARKER) {
                 /* Tile placed - draw letter (covers entire square with grid) */
                 uint8_t letter_idx = UNBLANKED(ml);
                 if (letter_idx >= 1 && letter_idx <= 26) {
@@ -765,17 +803,13 @@ void draw_rack(const Rack *rack) {
     }
 }
 
-/* Draw scores above the board on the left side, with frame count */
-void draw_scores(const GameState *game, uint32_t move_frames) {
+/* Draw scores above the board on the left side */
+void draw_scores(const GameState *game) {
     /* Player 1 score on row 0 */
     draw_char(0, 0, (game->current_player == 0) ? '>' : ' ', 0);
     draw_string(1, 0, "P1:", 0);
     draw_number(4, 0, game->players[0].score, 0);
-    draw_string(8, 0, "  ", 0);  /* Clear trailing */
-
-    /* Frame count in hex on row 0, right of P1 score */
-    draw_hex(10, 0, move_frames, 0);
-    draw_string(18, 0, " ", 0);  /* Clear trailing */
+    draw_string(8, 0, "        ", 0);  /* Clear trailing */
 
     /* Player 2 score on row 1 */
     draw_char(0, 1, (game->current_player == 1) ? '>' : ' ', 0);
@@ -790,6 +824,7 @@ typedef struct {
     uint16_t blanks;   /* Bitmask: bit i set if position i is a blank */
     int16_t score;
     int16_t equity;    /* Equity in eighths of a point */
+    uint16_t frames;   /* Frames elapsed finding this move */
     uint8_t player;
 } HistoryEntry;
 
@@ -812,9 +847,9 @@ void draw_history(const HistoryEntry *hist, int count) {
             const HistoryEntry *h = &hist[idx];
             /* Player indicator: > for P1, < for P2 */
             draw_char(HISTORY_COL, y, (h->player == 0) ? '>' : '<', 0);
-            /* Word (up to 8 chars to fit before score+equity) */
+            /* Word (up to 9 chars) */
             int word_ended = 0;
-            for (int j = 0; j < 8; j++) {
+            for (int j = 0; j < 9; j++) {
                 char c = h->word[j];
                 if (word_ended || c == '\0') {
                     draw_char(HISTORY_COL + 1 + j, y, ' ', 0);
@@ -825,15 +860,16 @@ void draw_history(const HistoryEntry *hist, int count) {
                     draw_char(HISTORY_COL + 1 + j, y, c, pal);
                 }
             }
-            /* Score (columns 27-30) */
-            draw_number(HISTORY_COL + 9, y, h->score, 0);
-            /* Space then equity in hex (columns 32-35) */
+            /* Score (3 digits) */
+            draw_number_3d(HISTORY_COL + 10, y, h->score, 0);
+            /* Space */
             draw_char(HISTORY_COL + 13, y, ' ', 0);
-            draw_hex(HISTORY_COL + 14, y, (uint32_t)(uint16_t)h->equity, 0);
-            /* Clear rest of line */
-            for (int j = HISTORY_COL + 19; j < 40; j++) {
-                draw_char(j, y, ' ', 0);
-            }
+            /* Equity (3 hex digits) */
+            draw_hex_n(HISTORY_COL + 14, y, (uint32_t)(uint16_t)h->equity, 3, 0);
+            /* Space */
+            draw_char(HISTORY_COL + 17, y, ' ', 0);
+            /* Frames (4 hex digits) */
+            draw_hex_n(HISTORY_COL + 18, y, h->frames, 4, 0);
         } else {
             /* Clear empty rows */
             for (int j = HISTORY_COL; j < 40; j++) {
@@ -845,9 +881,11 @@ void draw_history(const HistoryEntry *hist, int count) {
 
 /* Main display update - now with history instead of moves */
 void update_display(const GameState *game, const void *history, int history_count, uint32_t move_frames) {
+    (void)move_frames;  /* No longer displayed in header */
     wait_vblank();
     draw_board(&game->board);
-    draw_scores(game, move_frames);
+    draw_scores(game);
     draw_rack(&game->players[game->current_player].rack);
     draw_history((const HistoryEntry *)history, history_count);
 }
+

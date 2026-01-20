@@ -51,7 +51,7 @@ static MoveList moves;
 extern void rng_seed(uint32_t seed);
 
 static void format_move(Move *m, char *buf) {
-    if (m->dir == 0xFF) {
+    if (m->move_type == GAME_EVENT_EXCHANGE) {
         /* Exchange */
         sprintf(buf, "X%d", m->tiles_played);
     } else {
@@ -59,16 +59,16 @@ static void format_move(Move *m, char *buf) {
         char word[16];
         for (int i = 0; i < m->tiles_length && i < 15; i++) {
             MachineLetter ml = m->tiles[i];
-            uint8_t letter = ml & 0x7F;
+            uint8_t letter = UNBLANKED(ml);
             if (letter >= 1 && letter <= 26) {
                 word[i] = 'A' + (letter - 1);
-                if (ml & 0x80) word[i] += 32; /* lowercase for blank */
+                if (IS_BLANKED(ml)) word[i] += 32; /* lowercase for blank */
             } else {
                 word[i] = '.';
             }
         }
         word[m->tiles_length] = '\0';
-        sprintf(buf, "%s@%d,%d%c:%d/%d", word, m->row, m->col,
+        sprintf(buf, "%s@%d,%d%c:%d/%d", word, m->row_start, m->col_start,
                 m->dir == 0 ? 'H' : 'V', m->score, m->equity);
     }
 }
@@ -110,7 +110,7 @@ static void play_game(uint32_t seed) {
             printf("%u:%d:%s\n", seed, turn, move_str);
 
             /* Play the move */
-            if (best->dir == 0xFF) {
+            if (best->move_type == GAME_EVENT_EXCHANGE) {
                 game_exchange(&game, best->tiles, best->tiles_played);
             } else {
                 game_play_move(&game, best);
@@ -160,6 +160,20 @@ int main(int argc, char **argv) {
     } else {
         fprintf(stderr, "NO BAD CUTOFFS\n");
     }
+#elif USE_SHADOW
+    /* Get shadow cutoff stats from movegen */
+    extern int shadow_total_anchors;
+    extern int shadow_cutoff_anchors;
+    int total = shadow_total_anchors + shadow_cutoff_anchors;
+    fflush(stdout);  /* Ensure stdout is flushed before printing to stderr */
+    fprintf(stderr, "SHADOW_CUTOFF: processed=%d cutoff=%d total=%d (%.1f%% cutoff)\n",
+            shadow_total_anchors, shadow_cutoff_anchors, total,
+            total > 0 ? 100.0 * shadow_cutoff_anchors / total : 0.0);
+#endif
+
+#if USE_TIMING
+    extern void print_timing_stats(void);
+    print_timing_stats();
 #endif
 
     return 0;

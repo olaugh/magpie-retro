@@ -15,27 +15,39 @@
 /* Rack and tile limits */
 #define RACK_SIZE 7
 #define MAX_TILES_IN_BAG 100
-#define BLANK_TILE 0
 #define ALPHABET_SIZE 27  /* A-Z + blank */
 
-/* Machine letter encoding (0 = blank/separator, 1-26 = A-Z) */
+/* Machine letter encoding - names match original magpie (letter_distribution_defs.h) */
 typedef uint8_t MachineLetter;
+
+enum {
+    ALPHABET_EMPTY_SQUARE_MARKER = 0,  /* Empty board square */
+    BLANK_MACHINE_LETTER = 0,          /* Blank tile index in rack/counts */
+    BLANK_MASK = 0x80,                 /* Bit set on blanked letters */
+    UNBLANK_MASK = 0x7F,               /* Mask to get unblanked letter */
+    PLAYED_THROUGH_MARKER = 0xFF,      /* Marker for played-through tiles in Move.tiles */
+};
 
 #define ML_BLANK 0
 #define ML_A 1
 #define ML_Z 26
 #define ML_SEPARATOR 0  /* GADDAG separator */
-#define EMPTY_SQUARE 0xFF
 
-/* Blanked letter has bit 7 set */
-#define BLANK_BIT 0x80
-#define IS_BLANKED(ml) ((ml) & BLANK_BIT)
-#define UNBLANKED(ml) ((ml) & 0x7F)
-#define BLANKED(ml) ((ml) | BLANK_BIT)
+/* Blanked letter macros - use BLANK_MASK for consistency with original magpie */
+#define IS_BLANKED(ml) ((ml) & BLANK_MASK)
+#define UNBLANKED(ml) ((ml) & UNBLANK_MASK)
+#define BLANKED(ml) ((ml) | BLANK_MASK)
 
 /* Direction */
 #define DIR_HORIZONTAL 0
 #define DIR_VERTICAL 1
+
+/* Game event types - matches original magpie game_event_t */
+typedef enum {
+    GAME_EVENT_TILE_PLACEMENT_MOVE,
+    GAME_EVENT_PASS,
+    GAME_EVENT_EXCHANGE,
+} game_event_t;
 
 /* Bonus square types */
 typedef enum {
@@ -52,17 +64,25 @@ typedef uint32_t CrossSet;
 #define TRIVIAL_CROSS_SET 0xFFFFFFFE  /* All letters valid (bit 0 unused) */
 #define EMPTY_CROSS_SET 0
 
-/* Score type */
-typedef int16_t Score;
+/* Equity type - used for both scores and equity values */
+typedef int16_t Equity;
 
 /* Square on the board */
 typedef struct {
-    MachineLetter letter;    /* Placed tile or EMPTY_SQUARE */
+    MachineLetter letter;    /* Placed tile or ALPHABET_EMPTY_SQUARE_MARKER */
     uint8_t bonus;           /* BonusType */
     CrossSet cross_set_h;    /* Cross-set for horizontal plays */
     CrossSet cross_set_v;    /* Cross-set for vertical plays */
     int8_t cross_score_h;    /* Cross-word score for horizontal */
     int8_t cross_score_v;    /* Cross-word score for vertical */
+    /* Extension sets: which letters can extend a word in each direction.
+     * leftx_h = letters that can go left when playing horizontally
+     * rightx_h = letters that can go right when playing horizontally
+     * These enable pruning: if leftx_h & rack == 0, no valid left extension. */
+    CrossSet leftx_h;        /* Left extension set for horizontal */
+    CrossSet rightx_h;       /* Right extension set for horizontal */
+    CrossSet leftx_v;        /* Left extension set for vertical */
+    CrossSet rightx_v;       /* Right extension set for vertical */
 } Square;
 
 /* Board state */
@@ -83,17 +103,18 @@ typedef struct {
     uint8_t count;
 } Bag;
 
-/* A move (tile placement) */
+/* A move - matches original magpie Move struct */
 #define MAX_MOVE_TILES 15
 
 typedef struct {
-    uint8_t row;
-    uint8_t col;
+    Equity score;
+    Equity equity;
+    game_event_t move_type;
+    uint8_t row_start;
+    uint8_t col_start;
+    uint8_t tiles_played;  /* Number of tiles played or exchanged */
+    uint8_t tiles_length;  /* Equal to tiles_played for exchanges */
     uint8_t dir;
-    uint8_t tiles_played;
-    uint8_t tiles_length;
-    Score score;
-    int16_t equity;  /* Equity in eighths of a point (score*8 + leave_value) */
     MachineLetter tiles[MAX_MOVE_TILES];
 } Move;
 
@@ -108,7 +129,7 @@ typedef struct {
 /* Player state */
 typedef struct {
     Rack rack;
-    Score score;
+    Equity score;
     uint8_t player_num;
 } Player;
 
@@ -165,7 +186,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 void sort_moves_by_score(MoveList *moves);
 
 /* Scoring */
-Score score_move(const Board *board, const Move *move);
+Equity score_move(const Board *board, const Move *move);
 
 /* Game logic */
 void game_init(GameState *game);

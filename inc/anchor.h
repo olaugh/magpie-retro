@@ -36,10 +36,9 @@ typedef struct {
  * Used to process anchors in best-first order
  *
  * Maximum anchors = 15 rows * 15 anchors/row * 2 directions = 450
- * But in practice, most boards have far fewer anchors.
- * We limit to 200 which handles all but extreme cases.
+ * We use the full capacity to avoid silently dropping high-bound anchors.
  */
-#define MAX_ANCHORS 200
+#define MAX_ANCHORS 450
 
 typedef struct {
     Anchor anchors[MAX_ANCHORS];

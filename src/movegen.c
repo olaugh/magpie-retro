@@ -31,6 +31,37 @@
 #define USE_SHADOW_DEBUG 0
 #endif
 
+/* Timing instrumentation for profiling */
+#ifndef USE_TIMING
+#define USE_TIMING 0
+#endif
+
+#if USE_TIMING
+#include <sys/time.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
+static uint64_t timing_shadow_us = 0;
+static uint64_t timing_movegen_us = 0;
+static uint64_t timing_cache_row_us = 0;
+static int timing_call_count = 0;
+
+static inline uint64_t get_time_us(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+#endif
+
+#if USE_SHADOW
+/* Global counters for shadow algorithm statistics */
+int shadow_total_anchors = 0;
+int shadow_cutoff_anchors = 0;
+/* Per-move counters (reset before each generate_moves call) */
+int shadow_last_move_processed = 0;
+int shadow_last_move_cutoff = 0;
+#endif
+
 #if USE_SHADOW_DEBUG
 /* Info about a bad cutoff for debugging */
 typedef struct {
@@ -47,6 +78,7 @@ int shadow_debug_bad_cutoff_count = 0;
 BadCutoffInfo shadow_debug_last_bad_cutoff = {0};
 int shadow_debug_record_calls = 0;
 int shadow_debug_leave_added = 0;
+static int shadow_debug_turn = 0;  /* Tracks turns for correlating debug output */
 
 /* Declaration for printf when building native debug */
 extern int printf(const char *fmt, ...);
@@ -108,6 +140,8 @@ typedef struct {
     CrossSet row_cross_sets[BOARD_DIM];
     int8_t row_cross_scores[BOARD_DIM];
     uint8_t row_is_anchor[BOARD_DIM];
+    CrossSet row_leftx[BOARD_DIM];    /* Left extension sets for current dir */
+    CrossSet row_rightx[BOARD_DIM];   /* Right extension sets for current dir */
 
     /* ===== Shadow algorithm state ===== */
 
@@ -208,7 +242,7 @@ static inline int8_t get_tile_score(MachineLetter ml) {
 
 /* Check if column is empty */
 static inline int is_empty(const MoveGenState *gen, int col) {
-    return gen->row_letters[col] == EMPTY_SQUARE;
+    return gen->row_letters[col] == ALPHABET_EMPTY_SQUARE_MARKER;
 }
 
 /* Check if column is an anchor */
@@ -395,12 +429,12 @@ static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
             gen->rack_bits &= ~(1U << ml);
         }
         score = tile_scores[ml];
-    } else if (gen->rack.counts[BLANK_TILE] > 0) {
+    } else if (gen->rack.counts[BLANK_MACHINE_LETTER] > 0) {
         /* Use blank as this letter */
-        gen->rack.counts[BLANK_TILE]--;
+        gen->rack.counts[BLANK_MACHINE_LETTER]--;
         gen->rack.total--;
-        if (gen->rack.counts[BLANK_TILE] == 0) {
-            gen->rack_bits &= ~(1U << BLANK_TILE);
+        if (gen->rack.counts[BLANK_MACHINE_LETTER] == 0) {
+            gen->rack_bits &= ~(1U << BLANK_MACHINE_LETTER);
         }
         score = 0;  /* Blank scores 0 */
     } else {
@@ -437,10 +471,11 @@ static Equity get_best_leave_for_tiles_remaining(const MoveGenState *gen, int ti
 static void shadow_record(MoveGenState *gen) {
     /* Compute upper bound score: pair highest tiles with highest multipliers.
      * Loop over all RACK_SIZE positions - unexplored positions have multiplier 0. */
+    /* Use explicit 16-bit casts to force native muls.w instead of __mulsi3 */
     Equity tiles_played_score = 0;
     for (int i = 0; i < RACK_SIZE; i++) {
-        tiles_played_score += gen->descending_tile_scores[i] *
-                              gen->descending_effective_letter_multipliers[i];
+        tiles_played_score += (int16_t)gen->descending_tile_scores[i] *
+                              (int16_t)gen->descending_effective_letter_multipliers[i];
     }
 
     Equity bingo_bonus = (gen->tiles_played >= RACK_SIZE) ? 50 : 0;
@@ -452,7 +487,7 @@ static void shadow_record(MoveGenState *gen) {
     /* For equity, add best possible leave value.
      * Match actual move generation: add leave if KLV is available.
      * (Original checked tiles_in_bag > 0, but actual gen doesn't) */
-    Equity equity = score * 8;  /* Convert to eighths */
+    Equity equity = score << 3;  /* Convert to eighths */
 #if USE_SHADOW_DEBUG
     shadow_debug_record_calls++;
 #endif
@@ -524,7 +559,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
 
         /* Check if there's a playthrough tile first */
         MachineLetter existing = gen->row_letters[gen->shadow_right_col];
-        if (existing != EMPTY_SQUARE) {
+        if (existing != ALPHABET_EMPTY_SQUARE_MARKER) {
             /* Play through existing tile - doesn't use a rack tile */
             gen->shadow_mainword_restricted_score += get_tile_score(existing);
             continue;  /* Keep going right - no tile consumed */
@@ -533,6 +568,21 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         /* Empty square - need a tile from rack */
         gen->tiles_played++;
         if (gen->tiles_played > gen->shadow_original_rack_total) {
+            /* Rack exhausted. But if we already extended through playthroughs,
+             * we should record that score. Check if there are MORE playthroughs
+             * ahead (forming a longer word). */
+            int scan_col = gen->shadow_right_col + 1;
+            while (scan_col < BOARD_DIM) {
+                MachineLetter ml = gen->row_letters[scan_col];
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+                gen->shadow_mainword_restricted_score += get_tile_score(ml);
+                scan_col++;
+            }
+            /* Record if we played at least 1 tile (the anchor) */
+            if (gen->tiles_played >= 1) {
+                maybe_recalc_effective_multipliers(gen);
+                shadow_record(gen);
+            }
             break;
         }
 
@@ -540,7 +590,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         CrossSet cross_set = gen->row_cross_sets[gen->shadow_right_col];
         uint32_t cross_ext = cross_set & gen->right_ext_set;
         /* If rack has blank, blank can play as any letter in cross_set */
-        uint32_t possible = (gen->rack.counts[BLANK_TILE] > 0)
+        uint32_t possible = (gen->rack.counts[BLANK_MACHINE_LETTER] > 0)
             ? cross_ext
             : (cross_ext & gen->rack_bits);
         gen->right_ext_set = TRIVIAL_CROSS_SET;
@@ -583,7 +633,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
             int scan_col = gen->shadow_right_col + 1;
             while (scan_col < BOARD_DIM) {
                 MachineLetter scan_letter = gen->row_letters[scan_col];
-                if (scan_letter == EMPTY_SQUARE) break;
+                if (scan_letter == ALPHABET_EMPTY_SQUARE_MARKER) break;
                 gen->shadow_mainword_restricted_score += get_tile_score(scan_letter);
                 scan_col++;
             }
@@ -621,7 +671,12 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
  * Shadow play leftward for non-playthrough anchor
  */
 static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
-    int has_blank = gen->rack.counts[BLANK_TILE] > 0;
+    int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
+
+    /* After placing a tile at the anchor, left extension constraint no longer applies.
+     * The left_ext_set was for the anchor position; subsequent left extensions
+     * are only constrained by cross-sets at each position. */
+    gen->left_ext_set = TRIVIAL_CROSS_SET;
 
     for (;;) {
         /* Try extending right first */
@@ -638,10 +693,48 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
          * Note: Don't use last_anchor_col restriction here.
          * Actual move generation resets last_anchor_col = BOARD_DIM for each anchor,
          * so shadow must also allow full left extension for accurate bounds. */
-        if (gen->shadow_left_col == 0 ||
-            gen->tiles_played >= gen->shadow_original_rack_total) {
+        if (gen->shadow_left_col == 0) {
             return;
         }
+
+        /* If rack is exhausted, check if there's a playthrough tile to extend through.
+         * We can still form valid words by extending through playthroughs and then
+         * playing on the right side (via shadow_play_right called above). */
+        if (gen->tiles_played >= gen->shadow_original_rack_total) {
+            /* Check if next position left is a playthrough */
+            MachineLetter left_letter = gen->row_letters[gen->shadow_left_col - 1];
+            if (left_letter == ALPHABET_EMPTY_SQUARE_MARKER) {
+                return;  /* No playthrough, can't extend */
+            }
+            /* Extend through playthrough tiles, accumulating their scores */
+            while (gen->shadow_left_col > 0) {
+                gen->shadow_left_col--;
+                MachineLetter ml = gen->row_letters[gen->shadow_left_col];
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) {
+                    gen->shadow_left_col++;  /* Restore - went too far */
+                    break;
+                }
+                gen->shadow_mainword_restricted_score += get_tile_score(ml);
+            }
+            /* Record the extended play - playthroughs contribute to main word */
+            maybe_recalc_effective_multipliers(gen);
+            shadow_record(gen);
+            return;
+        }
+
+        /* First check if next position left is a playthrough tile.
+         * If so, we extend through it without consuming a rack tile.
+         * This is analogous to what shadow_play_right does. */
+        MachineLetter left_ml = gen->row_letters[gen->shadow_left_col - 1];
+        if (left_ml != ALPHABET_EMPTY_SQUARE_MARKER) {
+            /* Playthrough tile - add its score and continue */
+            gen->shadow_left_col--;
+            gen->shadow_mainword_restricted_score += get_tile_score(left_ml);
+            /* Continue loop to try extending further left */
+            continue;
+        }
+
+        /* Empty square to the left - need to place a tile from rack */
 
         /* If rack has blank, blank can play as any letter */
         uint32_t possible_left = has_blank
@@ -677,7 +770,7 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
  * Shadow play leftward for playthrough anchor
  */
 static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
-    int has_blank = gen->rack.counts[BLANK_TILE] > 0;
+    int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
 
     for (;;) {
         /* Try extending right first */
@@ -698,10 +791,44 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
 
         /* Check bounds.
          * Note: Don't use last_anchor_col restriction for same reason as above. */
-        if (gen->shadow_left_col == 0 ||
-            gen->tiles_played >= gen->shadow_original_rack_total) {
+        if (gen->shadow_left_col == 0) {
             break;
         }
+
+        /* If rack is exhausted, extend through any remaining playthrough tiles */
+        if (gen->tiles_played >= gen->shadow_original_rack_total) {
+            MachineLetter left_letter = gen->row_letters[gen->shadow_left_col - 1];
+            if (left_letter == ALPHABET_EMPTY_SQUARE_MARKER) {
+                break;  /* No more playthroughs */
+            }
+            /* Extend through remaining playthrough tiles */
+            while (gen->shadow_left_col > 0) {
+                gen->shadow_left_col--;
+                MachineLetter ml = gen->row_letters[gen->shadow_left_col];
+                if (ml == ALPHABET_EMPTY_SQUARE_MARKER) {
+                    gen->shadow_left_col++;
+                    break;
+                }
+                gen->shadow_mainword_restricted_score += get_tile_score(ml);
+            }
+            maybe_recalc_effective_multipliers(gen);
+            shadow_record(gen);
+            break;
+        }
+
+        /* First check if next position left is a playthrough tile.
+         * If so, we extend through it without consuming a rack tile.
+         * This is analogous to what shadow_play_right does. */
+        MachineLetter left_ml = gen->row_letters[gen->shadow_left_col - 1];
+        if (left_ml != ALPHABET_EMPTY_SQUARE_MARKER) {
+            /* Playthrough tile - add its score and continue */
+            gen->shadow_left_col--;
+            gen->shadow_mainword_restricted_score += get_tile_score(left_ml);
+            /* Continue loop to try extending further left */
+            continue;
+        }
+
+        /* Empty square to the left - need to place a tile from rack */
 
         if (possible_left == 0) {
             break;
@@ -755,11 +882,26 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
 static void shadow_start_nonplaythrough(MoveGenState *gen) {
     CrossSet cross_set = gen->row_cross_sets[gen->shadow_left_col];
     /* If rack has blank, blank can play as any letter in cross_set */
-    uint32_t possible = (gen->rack.counts[BLANK_TILE] > 0)
+    uint32_t possible = (gen->rack.counts[BLANK_MACHINE_LETTER] > 0)
         ? cross_set
         : (cross_set & gen->rack_bits);
 
     if (possible == 0) {
+#if USE_SHADOW_DEBUG
+        /* Check if there's a playthrough tile to the left */
+        int has_left_playthrough = (gen->shadow_left_col > 0 &&
+            gen->row_letters[gen->shadow_left_col - 1] != ALPHABET_EMPTY_SQUARE_MARKER);
+        if (has_left_playthrough) {
+            /* Convert to physical coordinates for comparison with BAD_CUTOFF */
+            int phys_row = (gen->dir == DIR_HORIZONTAL)
+                ? gen->current_row : gen->shadow_left_col;
+            int phys_col = (gen->dir == DIR_HORIZONTAL)
+                ? gen->shadow_left_col : gen->current_row;
+            printf("T%d SHADOW_EARLY: phys(%d,%d,%c) cross_set=0x%x rack_bits=0x%x\n",
+                   shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
+                   cross_set, gen->rack_bits);
+        }
+#endif
         return;
     }
 
@@ -773,20 +915,41 @@ static void shadow_start_nonplaythrough(MoveGenState *gen) {
             gen->row_cross_scores[gen->shadow_left_col] * word_mult;
     }
 
-    /* Temporarily set word multiplier to 0 for single-tile plays */
-    gen->shadow_word_multiplier = 0;
+    /* For single-tile plays, word multiplier applies to the single tile.
+     * Set it before try_restrict_tile so shadow_record computes correctly. */
+    gen->shadow_word_multiplier = word_mult;
     if (!try_restrict_tile(gen, possible, letter_mult, word_mult,
                            gen->shadow_left_col)) {
         insert_unrestricted_multipliers(gen, gen->shadow_left_col);
     }
     gen->tiles_played++;
 
-    /* Record single-tile play.
+    /* Before recording, scan both left and right for adjacent playthrough tiles.
+     * These tiles are part of the word formed by placing the single tile.
+     * Without this, we'd miss the playthroughs and record too low a bound. */
+
+    /* Scan left for playthroughs */
+    int scan_col = gen->shadow_left_col - 1;
+    while (scan_col >= 0) {
+        MachineLetter ml = gen->row_letters[scan_col];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        gen->shadow_mainword_restricted_score += get_tile_score(ml);
+        scan_col--;
+    }
+
+    /* Scan right for playthroughs */
+    scan_col = gen->shadow_left_col + 1;
+    while (scan_col < BOARD_DIM) {
+        MachineLetter ml = gen->row_letters[scan_col];
+        if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
+        gen->shadow_mainword_restricted_score += get_tile_score(ml);
+        scan_col++;
+    }
+
+    /* Record single-tile play (including adjacent playthroughs).
      * For shadow, always record regardless of direction - duplicate recordings
      * are harmless. The direction-based dedup is for actual move recording. */
     shadow_record(gen);
-
-    gen->shadow_word_multiplier = word_mult;
     maybe_recalc_effective_multipliers(gen);
 
     nonplaythrough_shadow_play_left(gen, gen->dir == DIR_HORIZONTAL);
@@ -808,7 +971,7 @@ static void shadow_start_playthrough(MoveGenState *gen, MachineLetter current_le
         gen->shadow_left_col--;
         current_letter = gen->row_letters[gen->shadow_left_col];
 
-        if (current_letter == EMPTY_SQUARE) {
+        if (current_letter == ALPHABET_EMPTY_SQUARE_MARKER) {
             gen->shadow_left_col++;
             break;
         }
@@ -821,6 +984,11 @@ static void shadow_start_playthrough(MoveGenState *gen, MachineLetter current_le
  * Shadow play for a single anchor
  */
 static void shadow_play_for_anchor(MoveGenState *gen, int col) {
+    /* Skip if no tiles to play (matches original magpie max_tiles_to_play check) */
+    if (gen->rack.total == 0) {
+        return;
+    }
+
     /* Initialize shadow state for this anchor */
     gen->shadow_left_col = col;
     gen->shadow_right_col = col;
@@ -837,26 +1005,40 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     memset(gen->descending_effective_letter_multipliers, 0,
            sizeof(gen->descending_effective_letter_multipliers));
 
-    /* Initialize to 0, not EQUITY_INITIAL_VALUE.
-     * Original magpie does this - if shadow_record is never called
-     * (e.g., vertical anchor with no valid extensions), we want
-     * a reasonable lower bound (0) not a sentinel that triggers cutoff. */
     gen->highest_shadow_equity = 0;
     gen->highest_shadow_score = 0;
 
-    /* Reset extension sets to trivial */
-    gen->left_ext_set = TRIVIAL_CROSS_SET;
-    gen->right_ext_set = TRIVIAL_CROSS_SET;
+    /* Initialize extension sets from cached row data.
+     * - left_ext_set: front hooks for suffix (tiles to the right) = what can start extending LEFT
+     * - right_ext_set: back hooks for prefix (tiles to the left) = what can continue extending RIGHT
+     */
+    gen->left_ext_set = gen->row_leftx[col];
+    gen->right_ext_set = gen->row_rightx[col];
 
     /* Build rack cross set */
     gen->rack_bits = build_rack_cross_set(&gen->rack);
 
     MachineLetter current_letter = gen->row_letters[col];
-    if (current_letter == EMPTY_SQUARE) {
+    if (current_letter == ALPHABET_EMPTY_SQUARE_MARKER) {
         shadow_start_nonplaythrough(gen);
     } else {
         shadow_start_playthrough(gen, current_letter);
     }
+
+#if USE_SHADOW_DEBUG
+    /* Debug: print when bound is 0 for non-trivial cases */
+    if (gen->highest_shadow_equity == 0) {
+        int phys_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : col;
+        int phys_col = (gen->dir == DIR_HORIZONTAL) ? col : gen->current_row;
+        CrossSet cs = gen->row_cross_sets[col];
+        int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
+        int has_left = (col > 0 && gen->row_letters[col-1] != ALPHABET_EMPTY_SQUARE_MARKER);
+        printf("T%d SHADOW_BOUND_ZERO: phys(%d,%d,%c) letter=%d cross_set=0x%x "
+               "rack_bits=0x%x has_blank=%d has_left=%d rack_total=%d\n",
+               shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
+               current_letter, cs, gen->rack_bits, has_blank, has_left, gen->rack.total);
+    }
+#endif
 }
 
 /*
@@ -866,13 +1048,27 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
 static void gen_shadow(MoveGenState *gen) {
     anchor_heap_init(&gen->anchor_heap);
 
+#if USE_SHADOW_DEBUG
+    int initial_rack_total = gen->rack.total;
+    int counts_sum = 0;
+    for (int ml = 0; ml < ALPHABET_SIZE; ml++) {
+        counts_sum += gen->rack.counts[ml];
+    }
+    printf("T%d GEN_SHADOW_START: rack_total=%d counts_sum=%d\n",
+           shadow_debug_turn, initial_rack_total, counts_sum);
+    if (counts_sum != initial_rack_total) {
+        printf("T%d RACK_MISMATCH: total=%d but counts sum to %d\n",
+               shadow_debug_turn, initial_rack_total, counts_sum);
+    }
+#endif
+
     /* Build descending tile scores once per turn */
     build_descending_tile_scores(gen);
 
     /* Check if board is empty (center square has no tile) */
     /* On empty board, only search horizontal (vertical is symmetric) */
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
-    int board_is_empty = (gen->board->squares[center_idx].letter == EMPTY_SQUARE);
+    int board_is_empty = (gen->board->squares[center_idx].letter == ALPHABET_EMPTY_SQUARE_MARKER);
     int max_dir = board_is_empty ? 1 : 2;
 
     /* Process each row in both directions (or just horizontal if empty) */
@@ -894,11 +1090,35 @@ static void gen_shadow(MoveGenState *gen) {
                 int8_t saved_scores[RACK_SIZE];
                 memcpy(saved_scores, gen->descending_tile_scores, sizeof(saved_scores));
 
+#if USE_SHADOW_DEBUG
+                /* Check rack state before processing anchor */
+                int pre_counts_sum = 0;
+                for (int ml = 0; ml < ALPHABET_SIZE; ml++) {
+                    pre_counts_sum += gen->rack.counts[ml];
+                }
+                uint32_t pre_rack_bits = build_rack_cross_set(&gen->rack);
+                if (pre_counts_sum != initial_rack_total || gen->rack.total != initial_rack_total) {
+                    int phys_row = (dir == DIR_HORIZONTAL) ? row : col;
+                    int phys_col = (dir == DIR_HORIZONTAL) ? col : row;
+                    printf("T%d RACK_CORRUPTION_BEFORE: phys(%d,%d,%c) total=%d counts=%d expected=%d rack_bits=0x%x\n",
+                           shadow_debug_turn, phys_row, phys_col, dir ? 'V' : 'H',
+                           gen->rack.total, pre_counts_sum, initial_rack_total, pre_rack_bits);
+                }
+#endif
+
                 shadow_play_for_anchor(gen, col);
 
                 /* Restore state */
                 memcpy(&gen->rack, &saved_rack, sizeof(Rack));
                 memcpy(gen->descending_tile_scores, saved_scores, sizeof(saved_scores));
+
+#if USE_SHADOW_DEBUG
+                if (gen->rack.total != initial_rack_total) {
+                    printf("T%d RACK_CORRUPTION_AFTER: anchor(%d,%d,%c) rack_total=%d expected=%d\n",
+                           shadow_debug_turn, row, col, dir ? 'V' : 'H',
+                           gen->rack.total, initial_rack_total);
+                }
+#endif
 
                 /* Add ALL anchors to heap (even with low equity).
                  * The shadow algorithm may underestimate equity for some positions,
@@ -965,13 +1185,13 @@ static int is_better_move(Equity new_equity, int16_t new_score,
     }
 
     /* Equal score: compare row (lower is better) */
-    if (new_row != best->row) {
-        return new_row < best->row;
+    if (new_row != best->row_start) {
+        return new_row < best->row_start;
     }
 
     /* Equal row: compare col (lower is better) */
-    if (new_col != best->col) {
-        return new_col < best->col;
+    if (new_col != best->col_start) {
+        return new_col < best->col_start;
     }
 
     /* Equal position: prefer horizontal (dir=0) over vertical (dir=1) */
@@ -1013,7 +1233,7 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     }
 
     /* Calculate equity = score*8 + leave_value (both in eighths of a point) */
-    Equity equity = (Equity)(score * 8);
+    Equity equity = (Equity)(score << 3);
 
     /* Add leave value if KLV is available */
     if (gen->klv != NULL) {
@@ -1044,8 +1264,9 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     Move *move = gen->best_move;
     gen->best_equity = equity;
 
-    move->row = new_row;
-    move->col = new_col;
+    move->move_type = GAME_EVENT_TILE_PLACEMENT_MOVE;
+    move->row_start = new_row;
+    move->col_start = new_col;
     move->dir = gen->dir;
     move->tiles_played = gen->tiles_played;
     move->tiles_length = rightstrip - leftstrip + 1;
@@ -1061,7 +1282,6 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
 /* Forward declarations */
 static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                           int leftstrip, int rightstrip);
-static void show_recursion_count(void);
 
 /* Track recursion calls for debugging */
 static uint16_t recursion_counter = 0;
@@ -1091,7 +1311,7 @@ static void go_on(MoveGenState *gen, int col, MachineLetter letter,
         word_mult = get_word_mult(bonus);
     } else {
         /* Playing through existing tile - mark in strip */
-        gen->strip[col] = 0xFF;  /* Marker for play-through */
+        gen->strip[col] = PLAYED_THROUGH_MARKER;
     }
 
     /* Update score accumulators */
@@ -1184,7 +1404,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
         cross_set &= gen->right_ext_set;
     }
 
-    if (current_letter != EMPTY_SQUARE) {
+    if (current_letter != ALPHABET_EMPTY_SQUARE_MARKER) {
         /* Square has existing tile - must follow it in GADDAG */
         MachineLetter raw = UNBLANKED(current_letter);
 
@@ -1209,7 +1429,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
             if (tile != 0) {  /* Skip separator */
                 /* Check if tile is in rack and cross-set */
                 int has_tile = gen->rack.counts[tile] > 0;
-                int has_blank = gen->rack.counts[BLANK_TILE] > 0;
+                int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
 
                 if ((has_tile || has_blank) && in_cross_set(cross_set, tile)) {
                     uint32_t next_index = KWG_ARC_INDEX(node);
@@ -1243,14 +1463,14 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
 
                     /* Try with blank */
                     if (has_blank) {
-                        gen->rack.counts[BLANK_TILE]--;
+                        gen->rack.counts[BLANK_MACHINE_LETTER]--;
                         gen->rack.total--;
                         gen->tiles_played++;
 
                         /* Update leave map */
                         if (gen->klv != NULL) {
-                            leave_map_take_letter(&gen->leave_map, BLANK_TILE,
-                                                  gen->rack.counts[BLANK_TILE]);
+                            leave_map_take_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
+                                                  gen->rack.counts[BLANK_MACHINE_LETTER]);
                         }
 
                         go_on(gen, col, BLANKED(tile), next_index, accepts,
@@ -1258,13 +1478,13 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
 
                         /* Restore leave map */
                         if (gen->klv != NULL) {
-                            leave_map_add_letter(&gen->leave_map, BLANK_TILE,
-                                                 gen->rack.counts[BLANK_TILE]);
+                            leave_map_add_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
+                                                 gen->rack.counts[BLANK_MACHINE_LETTER]);
                         }
 
                         gen->tiles_played--;
                         gen->rack.total++;
-                        gen->rack.counts[BLANK_TILE]++;
+                        gen->rack.counts[BLANK_MACHINE_LETTER]++;
                     }
                 }
             }
@@ -1329,9 +1549,13 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
         if (dir == DIR_HORIZONTAL) {
             gen->row_cross_sets[col] = sq->cross_set_h;
             gen->row_cross_scores[col] = sq->cross_score_h;
+            gen->row_leftx[col] = sq->leftx_h;
+            gen->row_rightx[col] = sq->rightx_h;
         } else {
             gen->row_cross_sets[col] = sq->cross_set_v;
             gen->row_cross_scores[col] = sq->cross_score_v;
+            gen->row_leftx[col] = sq->leftx_v;
+            gen->row_rightx[col] = sq->rightx_v;
         }
 
         /* Compute anchor status: empty square adjacent to a tile.
@@ -1339,13 +1563,13 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
          * recursive algorithm handles playthroughs by extending from adjacent anchors.
          * The shadow algorithm has separate logic to handle playthrough anchors. */
         gen->row_is_anchor[col] = 0;
-        if (sq->letter == EMPTY_SQUARE) {
+        if (sq->letter == ALPHABET_EMPTY_SQUARE_MARKER) {
             /* Check all 4 neighbors */
             int has_neighbor = 0;
-            if (board_row > 0 && gen->board->squares[(board_row-1)*BOARD_DIM + board_col].letter != EMPTY_SQUARE) has_neighbor = 1;
-            if (board_row < BOARD_DIM-1 && gen->board->squares[(board_row+1)*BOARD_DIM + board_col].letter != EMPTY_SQUARE) has_neighbor = 1;
-            if (board_col > 0 && gen->board->squares[board_row*BOARD_DIM + board_col-1].letter != EMPTY_SQUARE) has_neighbor = 1;
-            if (board_col < BOARD_DIM-1 && gen->board->squares[board_row*BOARD_DIM + board_col+1].letter != EMPTY_SQUARE) has_neighbor = 1;
+            if (board_row > 0 && gen->board->squares[(board_row-1)*BOARD_DIM + board_col].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_row < BOARD_DIM-1 && gen->board->squares[(board_row+1)*BOARD_DIM + board_col].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_col > 0 && gen->board->squares[board_row*BOARD_DIM + board_col-1].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
+            if (board_col < BOARD_DIM-1 && gen->board->squares[board_row*BOARD_DIM + board_col+1].letter != ALPHABET_EMPTY_SQUARE_MARKER) has_neighbor = 1;
 
             if (has_neighbor) {
                 gen->row_is_anchor[col] = 1;
@@ -1362,25 +1586,10 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
 /*
  * Main entry point: generate all legal moves
  */
-/* Use draw_char from graphics.c for progress display */
-extern void draw_char(int x, int y, char c, int pal);
-
+/* Progress display disabled - was slowing down shadow version */
 static void show_progress(int n, int phase) {
-    /* Show H00-H14/V00-V14 at bottom right - row 26 to avoid board overlap */
-    /* Avoid division - use lookup table for 0-14 */
-    static const char tens[] = "000000000011111";
-    static const char ones[] = "012345678901234";
-
-    draw_char(36, 26, (phase == 0) ? 'H' : 'V', 0);
-    draw_char(37, 26, tens[n], 0);
-    draw_char(38, 26, ones[n], 0);
-}
-
-static void show_recursion_count(void) {
-    /* Show recursion counter - avoid division, just show low byte in hex */
-    uint8_t n = (uint8_t)recursion_counter;
-    draw_char(33, 26, "0123456789ABCDEF"[(n >> 4) & 0xF], 0);
-    draw_char(34, 26, "0123456789ABCDEF"[n & 0xF], 0);
+    (void)n;
+    (void)phase;
 }
 
 /*
@@ -1441,9 +1650,10 @@ static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
             *best_exchange_equity = leave;
 
             /* Record this exchange */
-            best_exchange->row = 0;
-            best_exchange->col = 0;
-            best_exchange->dir = 0xFF;  /* Special marker for exchange */
+            best_exchange->move_type = GAME_EVENT_EXCHANGE;
+            best_exchange->row_start = 0;
+            best_exchange->col_start = 0;
+            best_exchange->dir = 0;
             best_exchange->tiles_played = exchange_count;
             best_exchange->tiles_length = exchange_count;
             best_exchange->score = 0;
@@ -1468,17 +1678,44 @@ static void gen_for_anchor(MoveGenState *gen, int anchor_col) {
     gen->left_ext_set = TRIVIAL_CROSS_SET;
     gen->right_ext_set = TRIVIAL_CROSS_SET;
 
+#if USE_SHADOW_DEBUG
+    Equity before_equity = gen->best_equity;
+    CrossSet anchor_cross_set = gen->row_cross_sets[anchor_col];
+    MachineLetter anchor_letter = gen->row_letters[anchor_col];
+#endif
+
     /* Get GADDAG root */
     uint32_t root = kwg_get_gaddag_root(gen->kwg);
 
     /* Start recursive generation from anchor going left */
     recursive_gen(gen, anchor_col, root, anchor_col, anchor_col);
+
+#if USE_SHADOW_DEBUG
+    if (gen->best_equity > before_equity && before_equity > EQUITY_INITIAL_VALUE) {
+        /* Print when move gen improves best_equity */
+        int phys_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : anchor_col;
+        int phys_col = (gen->dir == DIR_HORIZONTAL) ? anchor_col : gen->current_row;
+        printf("T%d GEN_BETTER: phys(%d,%d,%c) cross_set=0x%x before=%d after=%d\n",
+               shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
+               anchor_cross_set, before_equity, gen->best_equity);
+    }
+#endif
 }
 
 void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
                     const KLV *klv, const Bag *bag, MoveList *moves) {
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
+
+#if USE_SHADOW && !USE_SHADOW_DEBUG
+    /* Reset per-move cutoff counters */
+    shadow_last_move_processed = 0;
+    shadow_last_move_cutoff = 0;
+#endif
+
+#if USE_SHADOW_DEBUG
+    shadow_debug_turn++;
+#endif
 
     gen.board = board;
     gen.kwg = kwg;
@@ -1513,7 +1750,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
 #if USE_SHADOW
     /* Run shadow algorithm to build anchor heap with upper bounds */
+#if USE_TIMING
+    uint64_t t_shadow_start = get_time_us();
+#endif
     gen_shadow(&gen);
+#if USE_TIMING
+    timing_shadow_us += get_time_us() - t_shadow_start;
+#endif
 
     /* Restore rack after shadow (gen_shadow modifies it) */
     memcpy(&gen.rack, rack, sizeof(Rack));
@@ -1530,11 +1773,17 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         anchor_heap_extract_max(&gen.anchor_heap, &anchor);
 
         /* Early cutoff: if best anchor's upper bound can't beat current best, stop */
-#if 0  /* DISABLED - use debug mode below */
+#if USE_SHADOW && !USE_SHADOW_DEBUG
         if (gen.best_equity > EQUITY_INITIAL_VALUE &&
             anchor.highest_possible_equity < gen.best_equity) {
+            /* Count all anchors we're skipping */
+            int cutoff_count = gen.anchor_heap.count + 1;
+            shadow_cutoff_anchors += cutoff_count;
+            shadow_last_move_cutoff += cutoff_count;
             break;
         }
+        shadow_total_anchors++;
+        shadow_last_move_processed++;
 #endif
 #if USE_SHADOW_DEBUG
         Equity equity_before = gen.best_equity;
@@ -1543,7 +1792,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Cache row if different from current */
         int row = (anchor.dir == DIR_HORIZONTAL) ? anchor.row : anchor.col;
         if (row != cached_row || anchor.dir != cached_dir) {
+#if USE_TIMING
+            uint64_t t_cache = get_time_us();
+#endif
             cache_row(&gen, row, anchor.dir);
+#if USE_TIMING
+            timing_cache_row_us += get_time_us() - t_cache;
+#endif
             cached_row = row;
             cached_dir = anchor.dir;
         }
@@ -1554,17 +1809,23 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         /* Show progress */
         show_progress(row, anchor.dir);
 
-        /* Reinitialize leave map for this anchor */
-        if (klv != NULL) {
-            leave_map_init(&gen.leave_map, klv, rack);
-        }
-
-        /* Restore rack for this anchor */
+        /* Restore rack for this anchor.
+         * Note: leave_map doesn't need reinitialization - it's based on the original
+         * rack and we're restoring the rack here. */
         memcpy(&gen.rack, rack, sizeof(Rack));
+
+        /* Reset leave_map's current_index to match restored rack (all tiles present = index 0) */
+        gen.leave_map.current_index = 0;
 
         /* Generate moves for this anchor */
         int anchor_col = (anchor.dir == DIR_HORIZONTAL) ? anchor.col : anchor.row;
+#if USE_TIMING
+        uint64_t t_gen = get_time_us();
+#endif
         gen_for_anchor(&gen, anchor_col);
+#if USE_TIMING
+        timing_movegen_us += get_time_us() - t_gen;
+#endif
 
 #if USE_SHADOW_DEBUG
         /* If cutoff would have fired but this anchor found better move */
@@ -1583,8 +1844,9 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
             };
             /* Print detailed info including best_leaves and actual leave */
             Equity actual_leave = leave_map_get_current(&gen.leave_map);
-            printf("BAD_CUTOFF: anchor(%d,%d,%c) bound=%d before=%d after=%d "
+            printf("T%d BAD_CUTOFF: anchor(%d,%d,%c) bound=%d before=%d after=%d "
                    "actual_leave=%d best_leaves=[%d,%d,%d,%d,%d,%d,%d] bag=%d\n",
+                   shadow_debug_turn,
                    anchor.row, anchor.col, anchor.dir ? 'V' : 'H',
                    anchor.highest_possible_equity, equity_before, gen.best_equity,
                    actual_leave,
@@ -1598,7 +1860,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     /* Non-shadow mode: process rows in order (for validation) */
     /* Check if board is empty - skip vertical if so (symmetric) */
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
-    int board_is_empty = (board->squares[center_idx].letter == EMPTY_SQUARE);
+    int board_is_empty = (board->squares[center_idx].letter == ALPHABET_EMPTY_SQUARE_MARKER);
 
     /* Generate horizontal moves */
     for (int row = 0; row < BOARD_DIM; row++) {
@@ -1635,7 +1897,32 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
 
     /* Set count: 0 if no moves found, 1 if best move found */
     moves->count = (gen.best_equity > EQUITY_INITIAL_VALUE) ? 1 : 0;
+
+#if USE_TIMING
+    timing_call_count++;
+#endif
 }
+
+#if USE_TIMING
+void print_timing_stats(void) {
+    uint64_t total_us = timing_shadow_us + timing_movegen_us + timing_cache_row_us;
+    printf("TIMING: calls=%d shadow=%" PRIu64 " us movegen=%" PRIu64 " us cache_row=%" PRIu64 " us\n",
+           timing_call_count, timing_shadow_us, timing_movegen_us, timing_cache_row_us);
+    if (total_us > 0) {
+        printf("TIMING: shadow=%.1f%% movegen=%.1f%% cache_row=%.1f%%\n",
+               100.0 * timing_shadow_us / total_us,
+               100.0 * timing_movegen_us / total_us,
+               100.0 * timing_cache_row_us / total_us);
+    }
+}
+
+void reset_timing_stats(void) {
+    timing_shadow_us = 0;
+    timing_movegen_us = 0;
+    timing_cache_row_us = 0;
+    timing_call_count = 0;
+}
+#endif
 
 /*
  * Compare moves by score (for sorting)
@@ -1655,7 +1942,7 @@ void sort_moves_by_score(MoveList *moves) {
 
     /* Find index of best move */
     int best_idx = 0;
-    Score best_score = moves->moves[0].score;
+    Equity best_score = moves->moves[0].score;
 
     for (int i = 1; i < moves->count; i++) {
         if (moves->moves[i].score > best_score) {
