@@ -7,11 +7,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 /* Include the game headers */
 #include "inc/scrabble.h"
 #include "inc/kwg.h"
 #include "inc/klv.h"
+
+/* Timing for cross-set updates */
+#if USE_TIMING
+static uint64_t timing_cross_set_us = 0;
+static int timing_cross_set_calls = 0;
+
+static inline uint64_t get_time_us_batch(void) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+#endif
 
 /* Stubs for Genesis-specific functions */
 void draw_char(int x, int y, char c, int pal) { (void)x; (void)y; (void)c; (void)pal; }
@@ -114,7 +127,14 @@ static void play_game(uint32_t seed) {
                 game_exchange(&game, best->tiles, best->tiles_played);
             } else {
                 game_play_move(&game, best);
-                board_update_cross_sets(&game.board, kwg_data);
+#if USE_TIMING
+                uint64_t t0 = get_time_us_batch();
+#endif
+                board_update_cross_sets_for_move(&game.board, kwg_data, best);
+#if USE_TIMING
+                timing_cross_set_us += get_time_us_batch() - t0;
+                timing_cross_set_calls++;
+#endif
             }
         } else {
             printf("%u:%d:PASS\n", seed, turn);
@@ -174,6 +194,9 @@ int main(int argc, char **argv) {
 #if USE_TIMING
     extern void print_timing_stats(void);
     print_timing_stats();
+    fprintf(stderr, "CROSS_SET: calls=%d time=%llu us (%.1f us/call)\n",
+            timing_cross_set_calls, (unsigned long long)timing_cross_set_us,
+            timing_cross_set_calls > 0 ? (double)timing_cross_set_us / timing_cross_set_calls : 0.0);
 #endif
 
     return 0;

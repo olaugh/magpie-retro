@@ -272,10 +272,25 @@ void board_update_cross_sets(Board *board, const uint32_t *kwg) {
 }
 
 /*
- * Helper: Update cross-sets and extension sets for a single square.
- * This is the core logic extracted from board_update_cross_sets.
+ * Helper: Clear all cross-sets and extension sets for an occupied square.
  */
-static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
+static void clear_square_sets(Board *board, int row, int col) {
+    int h_idx = row * BOARD_DIM + col;
+    int v_idx = col * BOARD_DIM + row;
+    board->h_cross_sets[h_idx] = 0;
+    board->h_leftx[h_idx] = 0;
+    board->h_rightx[h_idx] = 0;
+    board->v_cross_sets[v_idx] = 0;
+    board->v_leftx[v_idx] = 0;
+    board->v_rightx[v_idx] = 0;
+}
+
+/*
+ * Helper: Update sets affected by vertical neighbor changes.
+ * Called when tiles above/below this square changed.
+ * Updates: h_cross_sets, h_cross_scores, v_leftx, v_rightx
+ */
+static void update_square_vertical(Board *board, const uint32_t *kwg, int row, int col) {
     /* Skip out-of-bounds squares */
     if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
         return;
@@ -286,25 +301,16 @@ static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
 
     /* Occupied squares: clear all sets */
     if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
-        board->h_cross_sets[h_idx] = 0;
-        board->h_leftx[h_idx] = 0;
-        board->h_rightx[h_idx] = 0;
-        board->v_cross_sets[v_idx] = 0;
-        board->v_leftx[v_idx] = 0;
-        board->v_rightx[v_idx] = 0;
+        clear_square_sets(board, row, col);
         return;
     }
 
     MachineLetter prefix[BOARD_DIM];
     MachineLetter suffix[BOARD_DIM];
-    int prefix_len, suffix_len;
+    int prefix_len = 0;
+    int suffix_len = 0;
 
-    /*
-     * VERTICAL neighbors: compute h_cross_sets AND v_leftx/v_rightx
-     */
-    prefix_len = 0;
-    suffix_len = 0;
-
+    /* Scan vertical neighbors */
     for (int r = row - 1; r >= 0; r--) {
         MachineLetter ml = board->h_letters[r * BOARD_DIM + col];
         if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
@@ -334,13 +340,34 @@ static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
         compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
                                 &board->v_leftx[v_idx], &board->v_rightx[v_idx]);
     }
+}
 
-    /*
-     * HORIZONTAL neighbors: compute v_cross_sets AND h_leftx/h_rightx
-     */
-    prefix_len = 0;
-    suffix_len = 0;
+/*
+ * Helper: Update sets affected by horizontal neighbor changes.
+ * Called when tiles left/right of this square changed.
+ * Updates: v_cross_sets, v_cross_scores, h_leftx, h_rightx
+ */
+static void update_square_horizontal(Board *board, const uint32_t *kwg, int row, int col) {
+    /* Skip out-of-bounds squares */
+    if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
+        return;
+    }
 
+    int h_idx = row * BOARD_DIM + col;
+    int v_idx = col * BOARD_DIM + row;
+
+    /* Occupied squares: clear all sets */
+    if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
+        clear_square_sets(board, row, col);
+        return;
+    }
+
+    MachineLetter prefix[BOARD_DIM];
+    MachineLetter suffix[BOARD_DIM];
+    int prefix_len = 0;
+    int suffix_len = 0;
+
+    /* Scan horizontal neighbors */
     for (int c = col - 1; c >= 0; c--) {
         MachineLetter ml = board->h_letters[row * BOARD_DIM + c];
         if (ml == ALPHABET_EMPTY_SQUARE_MARKER) break;
@@ -370,6 +397,30 @@ static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
         compute_extension_sets(kwg, prefix, prefix_len, suffix, suffix_len,
                                 &board->h_leftx[h_idx], &board->h_rightx[h_idx]);
     }
+}
+
+/*
+ * Helper: Update cross-sets and extension sets for a single square.
+ * This is the core logic extracted from board_update_cross_sets.
+ * Updates BOTH directions - use direction-specific functions when possible.
+ */
+static void update_square(Board *board, const uint32_t *kwg, int row, int col) {
+    /* Skip out-of-bounds squares */
+    if (row < 0 || row >= BOARD_DIM || col < 0 || col >= BOARD_DIM) {
+        return;
+    }
+
+    int h_idx = row * BOARD_DIM + col;
+
+    /* Occupied squares: clear all sets */
+    if (board->h_letters[h_idx] != ALPHABET_EMPTY_SQUARE_MARKER) {
+        clear_square_sets(board, row, col);
+        return;
+    }
+
+    /* Update both directions */
+    update_square_vertical(board, kwg, row, col);
+    update_square_horizontal(board, kwg, row, col);
 }
 
 /*
@@ -407,6 +458,10 @@ static int find_word_edge(const Board *board, int row, int col, int dir, int ste
  * Affected squares:
  * 1. Main direction: squares from (start - 1) to (start + length) in the row/col
  * 2. Perpendicular: for each newly placed tile, update cross-word endpoints
+ *
+ * Optimization: Uses direction-specific update functions to avoid redundant
+ * GADDAG traversals. When only horizontal neighbors changed, only update the
+ * sets that depend on horizontal neighbors (and vice versa).
  */
 void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const Move *move) {
     int row_start = move->row_start;
@@ -417,12 +472,14 @@ void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const M
     if (dir == DIR_HORIZONTAL) {
         /*
          * Horizontal move: main word runs left-to-right in row row_start
+         * For squares in the main row, horizontal neighbors changed.
          */
 
         /* Update squares in the main row (before and after the word) */
         for (int c = col_start - 1; c <= col_start + tiles_length; c++) {
             if (c >= 0 && c < BOARD_DIM) {
-                update_square(board, kwg, row_start, c);
+                /* Horizontal neighbors changed → update v_cross_sets, h_leftx, h_rightx */
+                update_square_horizontal(board, kwg, row_start, c);
             }
         }
 
@@ -437,23 +494,23 @@ void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const M
             int top_row = find_word_edge(board, row_start, c, DIR_VERTICAL, -1);
             int bot_row = find_word_edge(board, row_start, c, DIR_VERTICAL, +1);
 
-            /* Update squares at the ends of the cross-word */
-            update_square(board, kwg, top_row - 1, c);  /* Above the cross-word */
-            update_square(board, kwg, bot_row + 1, c);  /* Below the cross-word */
-
-            /* Also update the tile position itself (now occupied) */
-            update_square(board, kwg, row_start, c);
+            /* Update squares at the ends of the cross-word.
+             * Vertical neighbors changed → update h_cross_sets, v_leftx, v_rightx */
+            update_square_vertical(board, kwg, top_row - 1, c);  /* Above the cross-word */
+            update_square_vertical(board, kwg, bot_row + 1, c);  /* Below the cross-word */
         }
 
     } else {
         /*
          * Vertical move: main word runs top-to-bottom in column col_start
+         * For squares in the main column, vertical neighbors changed.
          */
 
         /* Update squares in the main column (before and after the word) */
         for (int r = row_start - 1; r <= row_start + tiles_length; r++) {
             if (r >= 0 && r < BOARD_DIM) {
-                update_square(board, kwg, r, col_start);
+                /* Vertical neighbors changed → update h_cross_sets, v_leftx, v_rightx */
+                update_square_vertical(board, kwg, r, col_start);
             }
         }
 
@@ -468,12 +525,10 @@ void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const M
             int left_col = find_word_edge(board, r, col_start, DIR_HORIZONTAL, -1);
             int right_col = find_word_edge(board, r, col_start, DIR_HORIZONTAL, +1);
 
-            /* Update squares at the ends of the cross-word */
-            update_square(board, kwg, r, left_col - 1);   /* Left of the cross-word */
-            update_square(board, kwg, r, right_col + 1);  /* Right of the cross-word */
-
-            /* Also update the tile position itself (now occupied) */
-            update_square(board, kwg, r, col_start);
+            /* Update squares at the ends of the cross-word.
+             * Horizontal neighbors changed → update v_cross_sets, h_leftx, h_rightx */
+            update_square_horizontal(board, kwg, r, left_col - 1);   /* Left of the cross-word */
+            update_square_horizontal(board, kwg, r, right_col + 1);  /* Right of the cross-word */
         }
     }
 }

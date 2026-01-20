@@ -6,10 +6,10 @@ Potential speedups identified during development. The 68000 runs at 7.6 MHz with
 
 ### Done
 - **Incremental cross-set update**: Only update affected squares after a move instead of all 225. ~2% speedup.
+- **Avoid redundant updates in incremental**: Removed duplicate `update_square` calls for tile positions (was called once in main loop, once in perpendicular loop).
+- **Single-direction update**: Split `update_square` into `update_square_vertical` and `update_square_horizontal`. Each direction-specific function only traverses neighbors in one direction and updates the relevant cross-sets/extension-sets. **~20% speedup** in cross-set updates (measured: 2.4 us/call → 1.9 us/call on native).
 
 ### Potential
-- **Avoid redundant updates in incremental**: Currently `update_square` is called for tile positions twice (once in main loop, once in perpendicular loop). Could deduplicate.
-- **Single-direction update**: Original magpie updates one direction at a time (with board transpose). We update both h_* and v_* in each `update_square` call. Could split to avoid redundant GADDAG traversals when only one direction changed.
 - **Precompute row_start indices**: In scanning loops, `h_idx - col` computes row start. Could pass it in or cache it.
 
 ## Board Memory Layout
@@ -56,3 +56,4 @@ Potential speedups identified during development. The 68000 runs at 7.6 MHz with
 To measure impact of changes, run full game in RetroArch unthrottled and note frame counter at end:
 - Baseline (SoA + incremental): ~0x3904 frames
 - Full cross-set update: ~0x3A33 frames (+303 frames, ~2% slower)
+- Single-direction cross-set update: ~0x38F7 frames (-13 frames, ~0.1% faster)
