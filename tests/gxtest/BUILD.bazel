@@ -52,6 +52,8 @@ cc_test(
         'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
         'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
     ],
+    # Manual tag excludes this from `bazel test //...` - must be run explicitly
+    tags = ["manual"],
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",

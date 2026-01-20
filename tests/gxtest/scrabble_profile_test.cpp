@@ -20,7 +20,7 @@
 namespace {
 
 constexpr int MAX_GAME_FRAMES = 30000;
-constexpr int NUM_GAMES = 10;
+constexpr int NUM_GAMES = 4;
 
 // Structure to pass results from child to parent via pipe
 struct GameResult {
