@@ -8,14 +8,15 @@
 #include <gxtest.h>
 #include <profiler.h>
 #include "scrabble_symbols.h"
-#include <iostream>
-#include <iomanip>
-#include <vector>
-#include <map>
 #include <algorithm>
-#include <unistd.h>
-#include <sys/wait.h>
+#include <cctype>
 #include <cstring>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -218,25 +219,25 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::vector<FuncReport> report;
 
     // Use nm to get function names by address
-    // Shell-quote the path to prevent command injection
-    std::string quoted_path = "'";
+    // Validate path contains only safe characters (defense-in-depth)
     for (const char* p = elf_path; *p; p++) {
-        if (*p == '\'') {
-            quoted_path += "'\\''";  // End quote, escaped quote, start quote
-        } else {
-            quoted_path += *p;
+        if (!std::isalnum(*p) && *p != '/' && *p != '.' && *p != '-' && *p != '_') {
+            std::cerr << "Invalid character in elf_path: " << *p << std::endl;
+            return;
         }
     }
-    quoted_path += "'";
-    std::string cmd = "nm -S --defined-only " + quoted_path + " 2>/dev/null";
+    std::string cmd = std::string("nm -S --defined-only '") + elf_path + "' 2>/dev/null";
     FILE* nm_pipe = popen(cmd.c_str(), "r");
     std::map<uint32_t, std::string> addr_to_name;
     if (nm_pipe) {
-        char line[512];
+        constexpr size_t LINE_BUFFER_SIZE = 512;
+        constexpr size_t FUNC_NAME_SIZE = 256;
+        char line[LINE_BUFFER_SIZE];
         while (fgets(line, sizeof(line), nm_pipe)) {
             uint32_t addr, size;
             char type;
-            char func_name[256];
+            char func_name[FUNC_NAME_SIZE];
+            // %255s leaves room for null terminator in 256-byte buffer
             if (sscanf(line, "%x %x %c %255s", &addr, &size, &type, func_name) >= 3 ||
                 sscanf(line, "%x %c %255s", &addr, &type, func_name) >= 2) {
                 if (type == 'T' || type == 't') {
