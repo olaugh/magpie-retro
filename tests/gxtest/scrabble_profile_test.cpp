@@ -263,15 +263,15 @@ void RunParallelProfile(const char* rom_path, const char* elf_path, const char* 
               << std::endl;
 }
 
-TEST(ScrabbleProfile, Shadow10Games) {
+TEST(ScrabbleProfile, ShadowParallel) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow");
 }
 
-TEST(ScrabbleProfile, NoShadow10Games) {
+TEST(ScrabbleProfile, NoShadowParallel) {
     RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow");
 }
 
-TEST(ScrabbleProfile, ShadowVsNoShadow10Games) {
+TEST(ScrabbleProfile, ShadowVsNoShadowParallel) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow");
     RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow");
 }
