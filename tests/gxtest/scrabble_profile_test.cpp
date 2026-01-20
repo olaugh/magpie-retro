@@ -67,20 +67,26 @@ void RunGameInChild(int game_id, const char* rom_path, const char* elf_path,
     gr.total_cycles = profiler.GetTotalCycles();
     gr.sample_rate = profiler.GetSampleRate();
 
-    write(write_fd, &gr, sizeof(gr));
+    if (write(write_fd, &gr, sizeof(gr)) != sizeof(gr)) {
+        _exit(1);
+    }
 
     // Write function stats
     const auto& stats = profiler.GetAllStats();
     uint32_t num_funcs = stats.size();
-    write(write_fd, &num_funcs, sizeof(num_funcs));
+    if (write(write_fd, &num_funcs, sizeof(num_funcs)) != sizeof(num_funcs)) {
+        _exit(1);
+    }
 
     for (const auto& kv : stats) {
         uint32_t addr = kv.first;
         uint64_t cycles = kv.second.cycles_exclusive;
         uint64_t calls = kv.second.call_count;
-        write(write_fd, &addr, sizeof(addr));
-        write(write_fd, &cycles, sizeof(cycles));
-        write(write_fd, &calls, sizeof(calls));
+        if (write(write_fd, &addr, sizeof(addr)) != sizeof(addr) ||
+            write(write_fd, &cycles, sizeof(cycles)) != sizeof(cycles) ||
+            write(write_fd, &calls, sizeof(calls)) != sizeof(calls)) {
+            _exit(1);
+        }
     }
 
     close(write_fd);
@@ -180,9 +186,11 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
         for (uint32_t j = 0; j < num_funcs; j++) {
             uint32_t addr;
             uint64_t cycles, calls;
-            read(read_fds[i], &addr, sizeof(addr));
-            read(read_fds[i], &cycles, sizeof(cycles));
-            read(read_fds[i], &calls, sizeof(calls));
+            if (read(read_fds[i], &addr, sizeof(addr)) != sizeof(addr) ||
+                read(read_fds[i], &cycles, sizeof(cycles)) != sizeof(cycles) ||
+                read(read_fds[i], &calls, sizeof(calls)) != sizeof(calls)) {
+                break;
+            }
 
             aggregated_stats[addr].total_cycles += cycles;
             aggregated_stats[addr].total_calls += calls;
@@ -195,9 +203,9 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::cout << "\n--- Summary ---" << std::endl;
     std::cout << "Total games: " << NUM_GAMES << std::endl;
     std::cout << "Total frames: " << total_frames << std::endl;
-    std::cout << "Avg frames/game: " << total_frames / NUM_GAMES << std::endl;
+    std::cout << "Avg frames/game: " << static_cast<double>(total_frames) / NUM_GAMES << std::endl;
     std::cout << "Total cycles: " << grand_total_cycles << std::endl;
-    std::cout << "Avg cycles/game: " << grand_total_cycles / NUM_GAMES << std::endl;
+    std::cout << "Avg cycles/game: " << static_cast<double>(grand_total_cycles) / NUM_GAMES << std::endl;
 
     // Build sorted report by cycles
     struct FuncReport {
@@ -210,7 +218,17 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::vector<FuncReport> report;
 
     // Use nm to get function names by address
-    std::string cmd = "nm -S --defined-only " + std::string(elf_path) + " 2>/dev/null";
+    // Shell-quote the path to prevent command injection
+    std::string quoted_path = "'";
+    for (const char* p = elf_path; *p; p++) {
+        if (*p == '\'') {
+            quoted_path += "'\\''";  // End quote, escaped quote, start quote
+        } else {
+            quoted_path += *p;
+        }
+    }
+    quoted_path += "'";
+    std::string cmd = "nm -S --defined-only " + quoted_path + " 2>/dev/null";
     FILE* nm_pipe = popen(cmd.c_str(), "r");
     std::map<uint32_t, std::string> addr_to_name;
     if (nm_pipe) {
