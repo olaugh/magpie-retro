@@ -526,3 +526,90 @@ build/batch-nwl23-timing-noshadow/test_batch: nwl23-noshadow build/batch-nwl23-t
 
 batch-timing-noshadow: build/batch-nwl23-timing-noshadow/test_batch
 	@echo "Timing noshadow batch: build/batch-nwl23-timing-noshadow/test_batch"
+
+#
+# Debug builds with DWARF symbols (for disassembly explorer)
+# These use -g -O2 to get debug info while keeping optimizations
+#
+
+# Debug compiler flags - adds -g for DWARF debug info
+DEBUG_CFLAGS = -m68000 -Wall -O2 -g -fno-builtin -fshort-enums
+DEBUG_CFLAGS += -I$(INC_DIR)
+DEBUG_CFLAGS += -nostdlib -ffreestanding
+
+# Debug linker flags - uses linker script that preserves DWARF
+DEBUG_LDFLAGS = -T linker_debug.ld -nostdlib
+
+#
+# NWL23 Shadow Debug Build
+#
+NWL23_SHADOW_DEBUG_CFLAGS = $(DEBUG_CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1
+NWL23_SHADOW_DEBUG_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-shadow-debug/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/nwl23-shadow-debug:
+	@mkdir -p $@
+
+$(BUILD_DIR)/nwl23-shadow-debug/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-shadow-debug
+	$(CC) $(NWL23_SHADOW_DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-debug/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23-shadow-debug
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-debug/kwg_data.c: | $(BUILD_DIR)/nwl23-shadow-debug
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/NWL23.kwg $@
+
+$(BUILD_DIR)/nwl23-shadow-debug/klv_data.c: data/NWL23.klv16 | $(BUILD_DIR)/nwl23-shadow-debug
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/nwl23-shadow-debug/kwg_data.o: $(BUILD_DIR)/nwl23-shadow-debug/kwg_data.c
+	$(CC) $(DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-debug/klv_data.o: $(BUILD_DIR)/nwl23-shadow-debug/klv_data.c
+	$(CC) $(DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-debug/scrabble.elf: $(BUILD_DIR)/nwl23-shadow-debug/boot.o $(NWL23_SHADOW_DEBUG_C_OBJECTS) $(BUILD_DIR)/nwl23-shadow-debug/kwg_data.o $(BUILD_DIR)/nwl23-shadow-debug/klv_data.o
+	$(LD) $(DEBUG_LDFLAGS) -o $@ $^ $(LIBGCC)
+
+nwl23-shadow-debug: dirs $(BUILD_DIR)/nwl23-shadow-debug/scrabble.elf
+	@echo "NWL23 shadow debug ELF (with DWARF): $(BUILD_DIR)/nwl23-shadow-debug/scrabble.elf"
+
+#
+# CSW24 Shadow Debug Build
+#
+CSW24_SHADOW_DEBUG_CFLAGS = $(DEBUG_CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1
+CSW24_SHADOW_DEBUG_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-shadow-debug/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/csw24-shadow-debug:
+	@mkdir -p $@
+
+$(BUILD_DIR)/csw24-shadow-debug/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-shadow-debug
+	$(CC) $(CSW24_SHADOW_DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-debug/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24-shadow-debug
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-debug/kwg_data.c: | $(BUILD_DIR)/csw24-shadow-debug
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/CSW24.kwg $@
+
+$(BUILD_DIR)/csw24-shadow-debug/klv_data.c: data/CSW24.klv16 | $(BUILD_DIR)/csw24-shadow-debug
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/csw24-shadow-debug/kwg_data.o: $(BUILD_DIR)/csw24-shadow-debug/kwg_data.c
+	$(CC) $(DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-debug/klv_data.o: $(BUILD_DIR)/csw24-shadow-debug/klv_data.c
+	$(CC) $(DEBUG_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-debug/scrabble.elf: $(BUILD_DIR)/csw24-shadow-debug/boot.o $(CSW24_SHADOW_DEBUG_C_OBJECTS) $(BUILD_DIR)/csw24-shadow-debug/kwg_data.o $(BUILD_DIR)/csw24-shadow-debug/klv_data.o
+	$(LD) $(DEBUG_LDFLAGS) -o $@ $^ $(LIBGCC)
+
+csw24-shadow-debug: dirs $(BUILD_DIR)/csw24-shadow-debug/scrabble.elf
+	@echo "CSW24 shadow debug ELF (with DWARF): $(BUILD_DIR)/csw24-shadow-debug/scrabble.elf"
+
+# Build all debug variants
+debug-builds: nwl23-shadow-debug csw24-shadow-debug
+	@echo ""
+	@echo "=== Debug builds complete (with DWARF symbols) ==="
+	@echo "Use these for disassembly explorer:"
+	@echo "  bazel build //:disasm_nwl23_shadow_debug"
+	@echo "  bazel build //:disasm_csw24_shadow_debug"
