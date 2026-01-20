@@ -139,7 +139,7 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
             // Child
             close(pipefd[0]);  // Close read end
             RunGameInChild(i, rom_path, elf_path, sample_rate, pipefd[1]);
-            _exit(0);  // Should not reach here
+            // RunGameInChild calls _exit(), so this is unreachable
         } else {
             // Parent
             close(pipefd[1]);  // Close write end
@@ -155,7 +155,11 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     for (int i = 0; i < NUM_GAMES; i++) {
         // Wait for child
         int status;
-        waitpid(pids[i], &status, 0);
+        if (waitpid(pids[i], &status, 0) < 0) {
+            perror("waitpid");
+            close(read_fds[i]);
+            continue;
+        }
 
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
             std::cerr << "Game " << i << " failed" << std::endl;
