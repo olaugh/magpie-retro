@@ -9,8 +9,8 @@
 #include <profiler.h>
 #include "scrabble_symbols.h"
 #include <algorithm>
-#include <cctype>
 #include <cstring>
+#include <fcntl.h>
 #include <iomanip>
 #include <iostream>
 #include <map>
@@ -219,33 +219,51 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::vector<FuncReport> report;
 
     // Use nm to get function names by address
-    // Validate path contains only safe characters (defense-in-depth)
-    for (const char* p = elf_path; *p; p++) {
-        if (!std::isalnum(*p) && *p != '/' && *p != '.' && *p != '-' && *p != '_') {
-            std::cerr << "Invalid character in elf_path: " << *p << std::endl;
-            return;
-        }
-    }
-    std::string cmd = std::string("nm -S --defined-only '") + elf_path + "' 2>/dev/null";
-    FILE* nm_pipe = popen(cmd.c_str(), "r");
+    // Use fork/exec to avoid shell interpretation (safer than popen)
     std::map<uint32_t, std::string> addr_to_name;
-    if (nm_pipe) {
-        constexpr size_t LINE_BUFFER_SIZE = 512;
-        constexpr size_t FUNC_NAME_SIZE = 256;
-        char line[LINE_BUFFER_SIZE];
-        while (fgets(line, sizeof(line), nm_pipe)) {
-            uint32_t addr, size;
-            char type;
-            char func_name[FUNC_NAME_SIZE];
-            // %255s leaves room for null terminator in 256-byte buffer
-            if (sscanf(line, "%x %x %c %255s", &addr, &size, &type, func_name) >= 3 ||
-                sscanf(line, "%x %c %255s", &addr, &type, func_name) >= 2) {
-                if (type == 'T' || type == 't') {
-                    addr_to_name[addr] = func_name;
-                }
+    int pipefd[2];
+    if (pipe(pipefd) == 0) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            // Child: exec nm directly without shell
+            close(pipefd[0]);
+            dup2(pipefd[1], STDOUT_FILENO);
+            close(pipefd[1]);
+            // Redirect stderr to /dev/null
+            int devnull = open("/dev/null", O_WRONLY);
+            if (devnull >= 0) {
+                dup2(devnull, STDERR_FILENO);
+                close(devnull);
             }
+            execlp("nm", "nm", "-S", "--defined-only", elf_path, nullptr);
+            _exit(127);  // exec failed
+        } else if (pid > 0) {
+            // Parent: read nm output
+            close(pipefd[1]);
+            FILE* nm_pipe = fdopen(pipefd[0], "r");
+            if (nm_pipe) {
+                constexpr size_t LINE_BUFFER_SIZE = 512;
+                constexpr size_t FUNC_NAME_SIZE = 256;
+                char line[LINE_BUFFER_SIZE];
+                while (fgets(line, sizeof(line), nm_pipe)) {
+                    uint32_t addr, size;
+                    char type;
+                    char func_name[FUNC_NAME_SIZE];
+                    // %255s leaves room for null terminator in 256-byte buffer
+                    if (sscanf(line, "%x %x %c %255s", &addr, &size, &type, func_name) >= 3 ||
+                        sscanf(line, "%x %c %255s", &addr, &type, func_name) >= 2) {
+                        if (type == 'T' || type == 't') {
+                            addr_to_name[addr] = func_name;
+                        }
+                    }
+                }
+                fclose(nm_pipe);
+            }
+            waitpid(pid, nullptr, 0);
+        } else {
+            close(pipefd[0]);
+            close(pipefd[1]);
         }
-        pclose(nm_pipe);
     }
 
     for (const auto& kv : aggregated_stats) {
