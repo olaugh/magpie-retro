@@ -1017,16 +1017,6 @@ static void shadow_play_for_anchor(MoveGenState *gen, int col) {
     /* Build rack cross set */
     gen->rack_bits = build_rack_cross_set(&gen->rack);
 
-#if USE_SHADOW_DEBUG
-    if (gen->rack.total != entry_rack_total) {
-        int phys_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : col;
-        int phys_col = (gen->dir == DIR_HORIZONTAL) ? col : gen->current_row;
-        printf("T%d RACK_CHANGED_BEFORE_START: phys(%d,%d,%c) entry=%d now=%d rack_bits=0x%x\n",
-               shadow_debug_turn, phys_row, phys_col, gen->dir ? 'V' : 'H',
-               entry_rack_total, gen->rack.total, gen->rack_bits);
-    }
-#endif
-
     MachineLetter current_letter = gen->row_letters[col];
     if (current_letter == ALPHABET_EMPTY_SQUARE_MARKER) {
         shadow_start_nonplaythrough(gen);
