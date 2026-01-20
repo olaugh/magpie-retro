@@ -100,10 +100,10 @@ int main(int argc, char **argv) {
                 char word[16];
                 for (int i = 0; i < best->tiles_length && i < 15; i++) {
                     MachineLetter ml = best->tiles[i];
-                    uint8_t letter = ml & 0x7F;
+                    uint8_t letter = UNBLANKED(ml);
                     if (letter >= 1 && letter <= 26) {
                         word[i] = 'A' + (letter - 1);
-                        if (ml & 0x80) word[i] += 32; /* lowercase for blank */
+                        if (IS_BLANKED(ml)) word[i] += 32; /* lowercase for blank */
                     } else {
                         word[i] = '.';
                     }
