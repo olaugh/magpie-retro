@@ -31,3 +31,29 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+# ---------------------------------------------------------------------------
+# CPU Cycle Profiling Test
+# ---------------------------------------------------------------------------
+
+cc_test(
+    name = "scrabble_profile_test",
+    srcs = [
+        "scrabble_profile_test.cpp",
+        "scrabble_symbols.h",
+    ],
+    data = [
+        "//:out/scrabble-nwl23-shadow.bin",
+        "//:out/scrabble-nwl23-noshadow.bin",
+        "//:build/nwl23-shadow/scrabble.elf",
+        "//:build/nwl23-noshadow/scrabble.elf",
+    ],
+    defines = [
+        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
+    ],
+    deps = [
+        "//gxtest",
+        "@googletest//:gtest_main",
+    ],
+)
