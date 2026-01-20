@@ -135,9 +135,14 @@ static unsigned char read_controller(void) {
     return state;
 }
 
-/* Game state */
-static GameState game;
+/* Game state - non-static for gxtest symbol access */
+GameState game;
 static MoveList moves;
+
+/* Test helper variables - exported for gxtest symbol access */
+volatile int16_t test_player0_score;
+volatile int16_t test_player1_score;
+volatile uint8_t test_game_over;
 
 /* Move history for display */
 #define MAX_HISTORY 28
@@ -153,7 +158,7 @@ typedef struct {
 static HistoryEntry history[MAX_HISTORY];
 static int history_count = 0;
 static uint32_t last_move_frames = 0;
-static uint32_t total_frames = 0;
+uint32_t total_frames = 0;  /* Non-static for gxtest symbol access */
 
 /* Add move to history - needs board to look up playthrough letters */
 static void add_to_history(const Move *m, int player, const Board *board, uint16_t frames) {
@@ -210,8 +215,11 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
 
 /* draw_history is called through update_display */
 
-static uint32_t game_number = 0;
-static uint32_t current_seed = 0;
+uint32_t game_number = 0;  /* Non-static for gxtest symbol access */
+uint32_t current_seed = 0;  /* Non-static for gxtest symbol access */
+
+/* Test hook area at end of RAM (not cleared by boot.s) */
+#define TEST_SEED_OVERRIDE (*(volatile uint32_t *)0xFFFFF0)
 
 /* Draw status bar at bottom left: lexicon and seed */
 static void draw_status_bar(void) {
@@ -237,9 +245,17 @@ int main(void) {
     klv_init(&klv, klv_data, klv_word_counts);
 
 new_game:
-    /* Seed RNG deterministically: 0, 1, 2, ... */
-    current_seed = game_number;
-    rng_seed(game_number);
+    /* Check for test seed override (gxtest can write to 0xFFFFF0 before first frame) */
+    if (TEST_SEED_OVERRIDE != 0 && TEST_SEED_OVERRIDE != 0xFFFFFFFF) {
+        /* Use test seed and clear it for subsequent games */
+        current_seed = TEST_SEED_OVERRIDE;
+        game_number = TEST_SEED_OVERRIDE;
+        TEST_SEED_OVERRIDE = 0;
+    } else {
+        /* Normal operation: use incrementing game_number */
+        current_seed = game_number;
+    }
+    rng_seed(current_seed);
     game_number++;
 
     /* Initialize game state */
@@ -261,6 +277,7 @@ new_game:
     game.passes = 0;
     game.game_over = 0;
     history_count = 0;
+    test_game_over = 0;  /* Reset test flag for gxtest */
 
     /* Start timing from here - includes rendering, movegen, everything */
     uint32_t game_start_frames = frame_counter;
@@ -332,6 +349,11 @@ new_game:
 
     /* Calculate total frames (all-inclusive: cross-sets, rendering, movegen) */
     total_frames = frame_counter - game_start_frames;
+
+    /* Update test helper variables for gxtest */
+    test_player0_score = game.players[0].score;
+    test_player1_score = game.players[1].score;
+    test_game_over = 1;
 
     /* Display total frames below rack (row 22) */
     draw_string(0, 22, "FRAMES:", 0);

@@ -1,0 +1,17 @@
+"""Scrabble for Sega Genesis - Bazel module definition"""
+
+module(
+    name = "magpie_genesis",
+    version = "0.1.0",
+)
+
+# Local path override for gxtest submodule
+local_path_override(
+    module_name = "gxtest",
+    path = "gxtest",
+)
+
+bazel_dep(name = "gxtest", version = "1.0.0")
+bazel_dep(name = "googletest", version = "1.14.0.bcr.1")
+bazel_dep(name = "rules_cc", version = "0.0.17")
+bazel_dep(name = "platforms", version = "0.0.10")

@@ -1,0 +1,44 @@
+# Scrabble for Sega Genesis - Main BUILD file
+
+package(default_visibility = ["//visibility:public"])
+
+# ---------------------------------------------------------------------------
+# Pre-built ROMs (built via make, referenced as data)
+# ---------------------------------------------------------------------------
+
+# To build ROMs: run `make` in the project root first
+# These filegroups reference the pre-built ROM files
+
+exports_files([
+    "out/scrabble-nwl23-shadow.bin",
+    "out/scrabble-nwl23-noshadow.bin",
+    "out/scrabble-csw24-shadow.bin",
+    "out/scrabble-csw24-noshadow.bin",
+])
+
+filegroup(
+    name = "roms_nwl23",
+    srcs = [
+        "out/scrabble-nwl23-shadow.bin",
+        "out/scrabble-nwl23-noshadow.bin",
+    ],
+)
+
+filegroup(
+    name = "roms_csw24",
+    srcs = [
+        "out/scrabble-csw24-shadow.bin",
+        "out/scrabble-csw24-noshadow.bin",
+    ],
+)
+
+filegroup(
+    name = "all_roms",
+    srcs = [
+        ":roms_nwl23",
+        ":roms_csw24",
+    ],
+)
+
+# Note: Symbols header is in tests/gxtest/scrabble_symbols.h
+# To regenerate: m68k-elf-nm -n build/nwl23-shadow/scrabble.elf | python3 gxtest/tools/elf2sym.py --namespace Scrabble > tests/gxtest/scrabble_symbols.h
