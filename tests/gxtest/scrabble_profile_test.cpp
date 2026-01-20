@@ -23,6 +23,10 @@ namespace {
 constexpr int MAX_GAME_FRAMES = 30000;
 constexpr int NUM_GAMES = 4;
 
+// Buffer sizes for nm output parsing
+constexpr size_t NM_OUTPUT_LINE_BUFFER_SIZE = 512;
+constexpr size_t MAX_FUNCTION_NAME_LENGTH = 256;
+
 // Structure to pass results from child to parent via pipe
 struct GameResult {
     int game_id;
@@ -240,19 +244,17 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
                 close(devnull);
             }
             execlp("nm", "nm", "-S", "--defined-only", elf_path, nullptr);
-            _exit(127);  // exec failed
+            _exit(1);  // exec failed
         } else if (pid > 0) {
             // Parent: read nm output
             close(pipefd[1]);
             FILE* nm_pipe = fdopen(pipefd[0], "r");
             if (nm_pipe) {
-                constexpr size_t LINE_BUFFER_SIZE = 512;
-                constexpr size_t FUNC_NAME_SIZE = 256;
-                char line[LINE_BUFFER_SIZE];
+                char line[NM_OUTPUT_LINE_BUFFER_SIZE];
                 while (fgets(line, sizeof(line), nm_pipe)) {
                     uint32_t addr, size;
                     char type;
-                    char func_name[FUNC_NAME_SIZE];
+                    char func_name[MAX_FUNCTION_NAME_LENGTH];
                     // %255s leaves room for null terminator in 256-byte buffer
                     if (sscanf(line, "%x %x %c %255s", &addr, &size, &type, func_name) >= 3 ||
                         sscanf(line, "%x %c %255s", &addr, &type, func_name) >= 2) {
