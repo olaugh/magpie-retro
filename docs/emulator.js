@@ -32,12 +32,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Turbo toggle (ratio is set to 0/unlimited at initialization via EJS_fastForwardRatio)
+    // Turbo toggle
     function toggleTurbo() {
         turboEnabled = !turboEnabled;
         turboBtn.textContent = turboEnabled ? 'Turbo: ON' : 'Turbo: OFF';
         turboBtn.classList.toggle('active', turboEnabled);
         if (window.EJS_emulator && window.EJS_emulator.gameManager) {
+            // Set a very high ratio for effectively unlimited speed
+            window.EJS_emulator.gameManager.setFastForwardRatio(100);
             window.EJS_emulator.gameManager.toggleFastForward(turboEnabled ? 1 : 0);
         }
     }
@@ -88,7 +90,6 @@ function loadEmulator(romKey) {
     window.EJS_color = '#22C55E';
     window.EJS_startOnLoaded = true;
     window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
-    window.EJS_fastForwardRatio = 0;  // 0 = unlimited speed for turbo mode
 
     const script = document.createElement('script');
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
