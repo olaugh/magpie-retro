@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>magpie-retro - Scrabble AI for Sega Genesis</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* ========================================
+           Design System: Premium Dark
+           ======================================== */
+
+        :root {
+            /* Layered backgrounds */
+            --bg-body: #0A0A0B;
+            --bg-surface: #161618;
+            --bg-highlight: #232326;
+
+            /* Borders */
+            --border-subtle: #333333;
+            --border-hover: #555555;
+
+            /* Text colors */
+            --text-primary: #FFFFFF;
+            --text-secondary: #A1A1AA;
+            --text-tertiary: #71717A;
+            --text-label: #888888;
+
+            /* Accent */
+            --accent-green: #22C55E;
+            --accent-green-dim: rgba(34, 197, 94, 0.15);
+
+            /* Fonts */
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-body);
+            color: var(--text-secondary);
+            min-height: 100vh;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        /* ========================================
+           Typography
+           ======================================== */
+
+        h1, h2, h3 {
+            color: var(--text-primary);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .label {
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-label);
+        }
+
+        code {
+            font-family: var(--font-mono);
+            font-size: 0.875em;
+            background: var(--bg-highlight);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border-subtle);
+        }
+
+        /* ========================================
+           Header
+           ======================================== */
+
+        header {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 1rem;
+            color: var(--text-tertiary);
+            margin-bottom: 12px;
+        }
+
+        .tagline {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            max-width: 520px;
+            margin: 0 auto;
+        }
+
+        /* ========================================
+           Emulator Section
+           ======================================== */
+
+        .emulator-section {
+            margin-bottom: 64px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .controls .label {
+            margin-right: 4px;
+        }
+
+        /* Select dropdown */
+        #rom-select {
+            font-family: var(--font-sans);
+            padding: 10px 16px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: 1px solid var(--border-subtle);
+            border-radius: 9999px;
+            background: var(--bg-surface);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: border-color 0.15s ease;
+        }
+
+        #rom-select:hover {
+            border-color: var(--border-hover);
+        }
+
+        #rom-select:focus {
+            outline: none;
+            border-color: var(--text-primary);
+        }
+
+        /* Buttons - Pill shaped */
+        .button {
+            font-family: var(--font-sans);
+            padding: 10px 24px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        /* Primary button - White */
+        .load-button {
+            background: var(--text-primary);
+            color: var(--bg-body);
+        }
+
+        .load-button:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Toggle button - Turbo */
+        .turbo-button {
+            background: var(--bg-highlight);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .turbo-button:hover {
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+
+        .turbo-button.active {
+            background: var(--bg-highlight);
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+            box-shadow: 0 0 20px var(--accent-green-dim);
+        }
+
+        /* FPS Badge */
+        .fps-display {
+            font-family: var(--font-mono);
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            color: var(--text-secondary);
+        }
+
+        /* Emulator container */
+        #emulator-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        #game {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-subtle);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Controls help text */
+        .controls-help {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+            margin-top: 16px;
+        }
+
+        .controls-help + .controls-help {
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: var(--text-label);
+        }
+
+        /* ========================================
+           Performance Analysis Section
+           ======================================== */
+
+        .docs-section {
+            margin-bottom: 64px;
+        }
+
+        .section-header {
+            margin-bottom: 24px;
+        }
+
+        .section-header .label {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .section-header h2 {
+            font-size: 1.5rem;
+        }
+
+        /* Card Grid - 2 columns */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        /* Analysis Cards - Full card is clickable */
+        .doc-card {
+            display: block;
+            text-decoration: none;
+            background: linear-gradient(to bottom right, #1a1a1a, #111111);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 24px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .doc-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-hover);
+        }
+
+        .doc-card:hover .cta {
+            gap: 8px;
+        }
+
+        .doc-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .doc-card p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .doc-card .cta {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--accent-green);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: gap 0.15s ease;
+        }
+
+        .doc-card .cta::after {
+            content: '→';
+        }
+
+        /* ========================================
+           Footer
+           ======================================== */
+
+        footer {
+            text-align: center;
+            padding: 32px 0;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .author {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .footer-links {
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+
+        .footer-links .sep {
+            margin: 0 8px;
+            color: var(--border-subtle);
+        }
+
+        /* ========================================
+           Responsive
+           ======================================== */
+
+        @media (max-width: 700px) {
+            .container {
+                padding: 24px 16px;
+            }
+
+            header h1 {
+                font-size: 2rem;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            #rom-select, .button {
+                width: 100%;
+            }
+
+            .doc-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>magpie-retro</h1>
+            <p class="subtitle">Scrabble AI for Sega Genesis</p>
+            <p class="tagline">A fast Scrabble AI running on 16-bit hardware (7.67MHz 68000) with GADDAG and shadow-playing.</p>
+        </header>
+
+        <section class="emulator-section">
+            <div class="controls">
+                <span class="label">ROM</span>
+                <select id="rom-select">
+                    <option value="nwl23" selected>NWL23 (North American)</option>
+                    <option value="csw24">CSW24 (International)</option>
+                </select>
+                <button id="load-btn" class="button load-button">Load Game</button>
+                <button id="turbo-btn" class="button turbo-button">Turbo: OFF</button>
+                <span id="fps-display" class="fps-display">FPS --</span>
+            </div>
+
+            <div id="emulator-container">
+                <div id="game" aria-label="Genesis emulator game screen"></div>
+            </div>
+
+            <p class="controls-help">
+                <code>Arrows</code> move · <code>Z</code> A · <code>X</code> B · <code>C</code> C · <code>Enter</code> Start · <code>Space</code> Toggle Turbo
+            </p>
+            <p class="controls-help">
+                Currently plays AI vs AI games automatically. Press any button to advance to the next game.
+            </p>
+        </section>
+
+        <section class="docs-section">
+            <div class="section-header">
+                <span class="label">Analysis</span>
+                <h2>Performance</h2>
+            </div>
+            <div class="doc-grid">
+                <a href="timing_report.html" class="doc-card">
+                    <h3>Timing Report</h3>
+                    <p>Comparison of Shadow, NoShadow, and Hybrid algorithms across NWL23 and CSW24 lexicons. Frame counts, cycle analysis, and move statistics.</p>
+                    <span class="cta">View Report</span>
+                </a>
+
+                <a href="disassembly/" class="doc-card">
+                    <h3>Disassembly Explorer</h3>
+                    <p>Interactive C/assembly listing with per-instruction cycle profiling from 68000 emulation. CSW24 Shadow build.</p>
+                    <span class="cta">Explore Code</span>
+                </a>
+            </div>
+        </section>
+
+        <footer>
+            <p class="author">By John O'Laughlin</p>
+            <p class="footer-links">
+                <a href="https://github.com/olaugh/magpie-retro" target="_blank" rel="noopener">magpie-retro</a>
+                <span class="sep">·</span>
+                <a href="https://github.com/andy-k/magpie" target="_blank" rel="noopener">MAGPIE</a>
+                <span class="sep">·</span>
+                Powered by <a href="https://emulatorjs.org/" target="_blank" rel="noopener">EmulatorJS</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="emulator.js"></script>
+</body>
+</html>

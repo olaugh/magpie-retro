@@ -313,87 +313,120 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{html.escape(display_name)} - Disassembly Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
-        /* === Apple System Dark Mode Palette === */
+        /* === Premium Dark Design System === */
         :root {{
-            --bg-app: #1E1E1E;
-            --bg-sidebar: #292A30;
-            --bg-toolbar: #323232;
-            --bg-source-header: #000000;
-            --border-row: #333333;
-            --border-subtle: #3A3A3C;
-            --selection-bg: #0060FA;
-            --selection-text: #FFFFFF;
+            /* Layered backgrounds */
+            --bg-body: #0A0A0B;
+            --bg-surface: #161618;
+            --bg-highlight: #232326;
+
+            /* Borders */
+            --border-subtle: #333333;
+            --border-hover: #555555;
+            --border-column: #2A2A2D;
+
+            /* Text colors */
             --text-primary: #FFFFFF;
-            --text-secondary: #CCCCCC;
-            --text-muted: #8F8F8F;
-            --text-dim: #666666;
-            --accent-source: #FF79C6;
-            --accent-keyword: #66D9EF;
-            --accent-function: #A6E22E;
+            --text-secondary: #A1A1AA;
+            --text-tertiary: #71717A;
+            --text-dim: #52525B;
+
+            /* Accent */
+            --accent-green: #22C55E;
+            --accent-blue: #3B82F6;
+
+            /* Selection */
+            --selection-bg: rgba(59, 130, 246, 0.1);
+            --selection-border: var(--accent-blue);
+
+            /* GitHub Dark Dimmed syntax colors (softer pastels) */
+            --syntax-function: #8DDB8C;
+            --syntax-keyword: #A5D6FF;
+            --syntax-string: #96D0FF;
+            --syntax-comment: #768390;
+            --syntax-number: #F0B27A;
+            --syntax-register: #D2A8FF;
+
+            /* Heat map colors */
+            --heat-hot: #F87171;
+            --heat-warm: #FBBF24;
+
+            /* Fonts */
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
         }}
 
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            font-family: var(--font-sans);
             display: flex;
             height: 100vh;
-            background: var(--bg-app);
+            background: var(--bg-body);
             color: var(--text-secondary);
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }}
 
         /* === Sidebar (File Navigator) === */
         .sidebar {{
-            width: 180px;
-            background: var(--bg-sidebar);
+            width: 200px;
+            background: var(--bg-surface);
             border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
             padding: 0;
             flex-shrink: 0;
         }}
         .sidebar-header {{
-            padding: 8px 12px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
+            padding: 12px 16px;
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-tertiary);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.1em;
             border-bottom: 1px solid var(--border-subtle);
         }}
         .sidebar a {{
             display: block;
-            padding: 3px 12px;
+            padding: 6px 16px;
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 11px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            border-bottom: 1px solid transparent;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            border-left: 2px solid transparent;
+            transition: all 0.15s ease;
         }}
-        .sidebar a:hover {{ background: rgba(255,255,255,0.05); }}
+        .sidebar a:hover {{
+            background: var(--bg-highlight);
+            color: var(--text-primary);
+        }}
         .sidebar a.current {{
             background: var(--selection-bg);
-            color: var(--selection-text);
+            color: var(--text-primary);
+            border-left-color: var(--accent-green);
         }}
         .search {{
-            padding: 6px 8px;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--border-subtle);
         }}
         .search input {{
             width: 100%;
-            padding: 4px 8px;
-            background: rgba(255,255,255,0.08);
+            padding: 8px 12px;
+            background: var(--bg-highlight);
             border: 1px solid var(--border-subtle);
-            border-radius: 4px;
-            color: var(--text-secondary);
-            font-size: 11px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: var(--font-mono);
+            transition: border-color 0.15s ease;
         }}
         .search input:focus {{
             outline: none;
-            border-color: var(--selection-bg);
-            background: rgba(255,255,255,0.12);
+            border-color: var(--text-tertiary);
         }}
         .search input::placeholder {{ color: var(--text-dim); }}
 
@@ -403,79 +436,82 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            background: var(--bg-app);
+            background: var(--bg-body);
         }}
 
-        /* === NSToolbar Style === */
+        /* === Toolbar === */
         .toolbar {{
-            height: 28px;
-            min-height: 28px;
-            background: var(--bg-toolbar);
-            padding: 0 12px;
+            height: 44px;
+            min-height: 44px;
+            background: var(--bg-surface);
+            padding: 0 16px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
             border-bottom: 1px solid var(--border-subtle);
         }}
 
-        /* Breadcrumb / Jump Bar */
+        /* Breadcrumb */
         .breadcrumb {{
             display: flex;
             align-items: center;
-            gap: 4px;
-            font-size: 11px;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            gap: 8px;
+            font-size: 13px;
+            font-family: var(--font-sans);
             color: var(--text-secondary);
         }}
         .breadcrumb-sep {{
             color: var(--text-dim);
-            font-size: 9px;
+            font-size: 10px;
         }}
         .breadcrumb-item {{
-            color: var(--text-secondary);
+            color: var(--text-tertiary);
         }}
         .breadcrumb-item.current {{
             color: var(--text-primary);
+            font-weight: 500;
         }}
 
         /* Segmented Control */
         .segmented-control {{
             display: flex;
-            background: rgba(255,255,255,0.06);
-            border-radius: 5px;
-            padding: 1px;
+            background: var(--bg-highlight);
+            border-radius: 8px;
+            padding: 3px;
             margin-left: auto;
+            border: 1px solid var(--border-subtle);
         }}
         .segmented-control button {{
             background: transparent;
             border: none;
-            color: var(--text-muted);
-            padding: 3px 10px;
-            font-size: 11px;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-tertiary);
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: var(--font-sans);
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 6px;
             transition: all 0.15s ease;
         }}
         .segmented-control button:hover {{
             color: var(--text-secondary);
         }}
         .segmented-control button.active {{
-            background: rgba(255,255,255,0.15);
+            background: var(--bg-surface);
             color: var(--text-primary);
-            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
         }}
 
         .toolbar-checkbox {{
             display: flex;
             align-items: center;
-            gap: 4px;
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-left: 8px;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-left: 12px;
         }}
         .toolbar-checkbox input {{
-            accent-color: var(--selection-bg);
+            accent-color: var(--accent-green);
         }}
 
         /* === Content Area === */
@@ -483,131 +519,142 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
             flex: 1;
             overflow: auto;
             padding: 0;
-            background: var(--bg-app);
+            background: var(--bg-body);
         }}
 
         /* === Function Block === */
         .function {{
-            border-bottom: 1px solid var(--border-row);
+            border-bottom: 1px solid var(--border-subtle);
         }}
         .func-header {{
-            background: var(--bg-sidebar);
-            padding: 4px 12px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            font-size: 11px;
-            line-height: 1.3;
-            color: var(--accent-function);
-            font-weight: 600;
+            background: var(--bg-surface);
+            padding: 8px 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.4;
+            color: var(--syntax-function);
+            font-weight: 500;
             position: sticky;
             top: 0;
             z-index: 10;
-            border-bottom: 1px solid var(--border-row);
+            border-bottom: 1px solid var(--border-subtle);
         }}
         .func-header .addr {{
             color: var(--text-dim);
-            font-weight: normal;
-            margin-right: 8px;
+            font-weight: 400;
+            margin-right: 12px;
         }}
 
         /* === Source Line (Section Header) === */
         .source-line {{
-            background: var(--bg-source-header);
-            padding: 3px 0;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            font-size: 11px;
-            line-height: 1.3;
+            background: var(--bg-highlight);
+            padding: 4px 0;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.4;
             cursor: pointer;
             display: grid;
-            grid-template-columns: 16px 150px 1fr;
+            grid-template-columns: 20px 120px 1fr;
             align-items: start;
-            border-bottom: 1px solid var(--border-row);
+            border-bottom: 1px solid var(--border-subtle);
+            border-left: 3px solid transparent;
+            transition: all 0.1s ease;
         }}
         .source-line.has-profile {{
-            grid-template-columns: 16px 70px 150px 1fr;
+            grid-template-columns: 20px 70px 120px 1fr;
         }}
-        .source-line:hover {{ background: #0a0a0a; }}
+        .source-line:hover {{
+            background: var(--bg-surface);
+        }}
         .source-line.selected {{
             background: var(--selection-bg) !important;
-        }}
-        .source-line.selected * {{
-            color: var(--selection-text) !important;
+            border-left-color: var(--selection-border);
         }}
         .source-line .toggle {{
             color: var(--text-dim);
             text-align: center;
-            font-size: 9px;
-            padding-top: 1px;
+            font-size: 10px;
+            padding-top: 2px;
         }}
         .source-line .cycles {{
-            color: var(--text-muted);
+            color: var(--text-tertiary);
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px;
+            border-right: 1px solid var(--border-column);
         }}
         .source-line .cycles.hot {{
-            color: #FF6B6B;
-            font-weight: 600;
+            color: var(--heat-hot);
+            font-weight: 500;
         }}
         .source-line .cycles.warm {{
-            color: #FFB347;
+            color: var(--heat-warm);
         }}
         .source-line .line-num {{
             color: var(--text-dim);
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px;
+            border-right: 1px solid var(--border-column);
             user-select: none;
         }}
         .source-line .code {{
             color: var(--text-primary);
-            font-weight: 600;
+            font-weight: 500;
             white-space: pre;
             overflow: hidden;
             text-overflow: ellipsis;
+            padding-left: 12px;
         }}
 
-        /* === Assembly Grid Layout === */
+        /* === Assembly Grid Layout (Spreadsheet Style) === */
         .asm-line {{
             display: grid;
-            grid-template-columns: 70px 80px 1fr;
-            padding: 1px 0;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            font-size: 11px;
-            line-height: 1.3;
-            border-bottom: 1px solid var(--border-row);
-            background: var(--bg-app);
+            grid-template-columns: 80px 100px 1fr;
+            padding: 3px 0;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.4;
+            border-bottom: 1px solid var(--border-column);
+            background: var(--bg-body);
+            border-left: 3px solid transparent;
+            transition: all 0.1s ease;
         }}
         .asm-line.has-profile {{
-            grid-template-columns: 70px 70px 80px 1fr;
+            grid-template-columns: 80px 70px 100px 1fr;
         }}
-        .asm-line:hover {{ background: #252525; }}
+        .asm-line:hover {{
+            background: var(--bg-surface);
+        }}
         .asm-line.selected {{
             background: var(--selection-bg) !important;
-        }}
-        .asm-line.selected * {{
-            color: var(--selection-text) !important;
+            border-left-color: var(--selection-border);
         }}
         .asm-line .addr {{
             color: var(--text-dim);
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px;
+            border-right: 1px solid var(--border-column);
         }}
         .asm-line .cycles {{
-            color: var(--text-muted);
+            color: var(--text-tertiary);
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px;
+            border-right: 1px solid var(--border-column);
         }}
         .asm-line .cycles.hot {{
-            color: #FF6B6B;
-            font-weight: 600;
+            color: var(--heat-hot);
+            font-weight: 500;
         }}
         .asm-line .cycles.warm {{
-            color: #FFB347;
+            color: var(--heat-warm);
         }}
         .asm-line .hex {{
             color: var(--text-dim);
-            padding-right: 8px;
+            padding-right: 12px;
+            border-right: 1px solid var(--border-column);
         }}
         .asm-line .instr {{
-            color: var(--text-muted);
+            color: var(--text-secondary);
+            padding-left: 12px;
         }}
 
         /* === Block Containers === */
@@ -623,7 +670,7 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
 
         /* === View Modes === */
         .view-source .asm-group {{ }}
-        .view-machine .source-group {{ background: var(--bg-source-header); }}
+        .view-machine .source-group {{ background: var(--bg-highlight); }}
 
         /* === Row Selection (full edge-to-edge) === */
         .content *:focus {{
@@ -933,145 +980,163 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disassembly Explorer - {html.escape(binary_name)}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
+        /* === Premium Dark Design System === */
         :root {{
-            --bg-app: #1E1E1E;
-            --bg-sidebar: #292A30;
-            --bg-card: #2C2C2E;
-            --border-subtle: #3A3A3C;
-            --selection-bg: #0060FA;
+            --bg-body: #0A0A0B;
+            --bg-surface: #161618;
+            --bg-highlight: #232326;
+            --border-subtle: #333333;
+            --border-hover: #555555;
             --text-primary: #FFFFFF;
-            --text-secondary: #CCCCCC;
-            --text-muted: #8F8F8F;
-            --accent-green: #32D74B;
+            --text-secondary: #A1A1AA;
+            --text-tertiary: #71717A;
+            --text-dim: #52525B;
+            --accent-green: #22C55E;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
         }}
 
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            font-family: var(--font-sans);
             display: flex;
             height: 100vh;
-            background: var(--bg-app);
+            background: var(--bg-body);
             color: var(--text-secondary);
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }}
 
         .sidebar {{
-            width: 180px;
-            background: var(--bg-sidebar);
+            width: 200px;
+            background: var(--bg-surface);
             border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
             padding: 0;
             flex-shrink: 0;
         }}
         .sidebar-header {{
-            padding: 8px 12px;
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
+            padding: 12px 16px;
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-tertiary);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.1em;
             border-bottom: 1px solid var(--border-subtle);
         }}
         .sidebar a {{
             display: block;
-            padding: 3px 12px;
+            padding: 6px 16px;
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 11px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            border-left: 2px solid transparent;
+            transition: all 0.15s ease;
         }}
-        .sidebar a:hover {{ background: rgba(255,255,255,0.05); }}
+        .sidebar a:hover {{
+            background: var(--bg-highlight);
+            color: var(--text-primary);
+        }}
         .search {{
-            padding: 6px 8px;
+            padding: 8px 12px;
             border-bottom: 1px solid var(--border-subtle);
         }}
         .search input {{
             width: 100%;
-            padding: 4px 8px;
-            background: rgba(255,255,255,0.08);
+            padding: 8px 12px;
+            background: var(--bg-highlight);
             border: 1px solid var(--border-subtle);
-            border-radius: 4px;
-            color: var(--text-secondary);
-            font-size: 11px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: var(--font-mono);
+            transition: border-color 0.15s ease;
         }}
         .search input:focus {{
             outline: none;
-            border-color: var(--selection-bg);
+            border-color: var(--text-tertiary);
         }}
-        .search input::placeholder {{ color: #666; }}
+        .search input::placeholder {{ color: var(--text-dim); }}
 
         .content {{
             flex: 1;
             overflow: auto;
-            padding: 24px 32px;
+            padding: 40px 48px;
         }}
 
         .header {{
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }}
         .header h1 {{
-            font-size: 20px;
+            font-size: 1.75rem;
             font-weight: 600;
             color: var(--text-primary);
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
         }}
         .header .subtitle {{
-            font-size: 12px;
-            color: var(--text-muted);
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
         }}
 
         .stats {{
             display: flex;
-            gap: 16px;
-            margin-bottom: 24px;
+            gap: 20px;
+            margin-bottom: 32px;
         }}
         .stat {{
-            background: var(--bg-card);
-            padding: 12px 20px;
-            border-radius: 8px;
+            background: linear-gradient(to bottom right, #1a1a1a, #111111);
+            padding: 20px 28px;
+            border-radius: 12px;
             border: 1px solid var(--border-subtle);
         }}
         .stat-value {{
-            font-size: 28px;
+            font-size: 2rem;
             font-weight: 600;
             color: var(--accent-green);
             font-variant-numeric: tabular-nums;
         }}
         .stat-label {{
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 2px;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }}
 
         .intro {{
-            background: var(--bg-card);
-            padding: 16px 20px;
-            border-radius: 8px;
+            background: linear-gradient(to bottom right, #1a1a1a, #111111);
+            padding: 24px;
+            border-radius: 12px;
             border: 1px solid var(--border-subtle);
-            line-height: 1.5;
+            line-height: 1.6;
         }}
         .intro h2 {{
-            font-size: 13px;
+            font-size: 1rem;
             font-weight: 600;
             color: var(--text-primary);
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }}
         .intro p {{
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-bottom: 8px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
         }}
         .intro p:last-child {{ margin-bottom: 0; }}
-        .intro strong {{ color: var(--text-secondary); }}
+        .intro strong {{ color: var(--text-primary); }}
         .intro code {{
-            background: var(--bg-app);
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-            font-size: 11px;
+            background: var(--bg-highlight);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            border: 1px solid var(--border-subtle);
         }}
     </style>
 </head>
@@ -1096,8 +1161,8 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
         </div>
         <div class="intro">
             <h2>View Modes</h2>
-            <p><strong>Source Order</strong> - C code with expandable assembly blocks underneath.</p>
-            <p><strong>Machine Order</strong> - Assembly with expandable source context.</p>
+            <p><strong>Source Order</strong> — C code with expandable assembly blocks underneath.</p>
+            <p><strong>Machine Order</strong> — Assembly with expandable source context.</p>
             <p>Each file is available as <code>filename.c.html</code> for independent fetching.</p>
         </div>
     </div>

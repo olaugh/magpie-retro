@@ -124,3 +124,6 @@ disassembly_site(
     binary = "build/csw24-shadow/scrabble.elf",
     srcs = [":genesis_sources"],
 )
+
+# ---------------------------------------------------------------------------
+# Play Site (EmulatorJS-based web emulator)

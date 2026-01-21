@@ -1,0 +1,86 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install m68k-elf toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-m68k-linux-gnu binutils-m68k-linux-gnu
+          # Create symlinks for m68k-elf-* names
+          sudo ln -sf /usr/bin/m68k-linux-gnu-gcc /usr/local/bin/m68k-elf-gcc
+          sudo ln -sf /usr/bin/m68k-linux-gnu-as /usr/local/bin/m68k-elf-as
+          sudo ln -sf /usr/bin/m68k-linux-gnu-ld /usr/local/bin/m68k-elf-ld
+          sudo ln -sf /usr/bin/m68k-linux-gnu-objcopy /usr/local/bin/m68k-elf-objcopy
+          sudo ln -sf /usr/bin/m68k-linux-gnu-nm /usr/local/bin/m68k-elf-nm
+          sudo ln -sf /usr/bin/m68k-linux-gnu-objdump /usr/local/bin/m68k-elf-objdump
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build hybrid ROMs
+        run: make nwl23-hybrid csw24-hybrid
+
+      - name: Build timing ROMs
+        run: make timing-builds
+
+      - name: Build debug builds (for disassembly)
+        run: make debug-builds
+
+      - name: Generate timing report
+        run: |
+          bazel run //tests/gxtest:scrabble_timing_report -- \
+            -n 50 \
+            -o ${{ github.workspace }}/docs/timing_report.html
+
+      - name: Generate disassembly with profiling
+        run: |
+          bazel build //:disasm_csw24_shadow
+          cp -r bazel-bin/disasm_csw24_shadow docs/disassembly
+
+      - name: Copy hybrid ROMs to docs
+        run: |
+          mkdir -p docs/play/roms
+          cp out/scrabble-nwl23-hybrid.bin docs/play/roms/nwl23-hybrid.bin
+          cp out/scrabble-csw24-hybrid.bin docs/play/roms/csw24-hybrid.bin
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
