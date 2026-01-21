@@ -27,6 +27,12 @@
 #define USE_SHADOW 1
 #endif
 
+/* Hybrid mode: use NoShadow for 0 blanks, Shadow for 1+ blanks */
+/* Can be overridden via compiler flag: -DUSE_HYBRID=1 */
+#ifndef USE_HYBRID
+#define USE_HYBRID 0
+#endif
+
 /* Debug mode for tracking bad shadow cutoffs */
 #ifndef USE_SHADOW_DEBUG
 #define USE_SHADOW_DEBUG 0
@@ -71,7 +77,7 @@ static inline uint64_t get_time_us(void) {
 }
 #endif
 
-#if USE_SHADOW
+#if USE_SHADOW || USE_HYBRID
 /* Global counters for shadow algorithm statistics */
 int shadow_total_anchors = 0;
 int shadow_cutoff_anchors = 0;
@@ -1592,7 +1598,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
     }
 }
 
-#if !USE_SHADOW
+#if !USE_SHADOW || USE_HYBRID
 /*
  * Generate moves for a single row/column (non-shadow mode)
  */
@@ -1845,7 +1851,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
 
-#if USE_SHADOW && !USE_SHADOW_DEBUG
+#if (USE_SHADOW || USE_HYBRID) && !USE_SHADOW_DEBUG
     /* Reset per-move cutoff counters */
     shadow_last_move_processed = 0;
     shadow_last_move_cutoff = 0;
@@ -1886,7 +1892,13 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         }
     }
 
-#if USE_SHADOW
+#if USE_HYBRID
+    /* Hybrid mode: use NoShadow for 0 blanks, Shadow for 1+ blanks */
+    int use_shadow_algorithm = (rack->counts[BLANK_MACHINE_LETTER] > 0);
+    if (use_shadow_algorithm) {
+#endif
+
+#if USE_SHADOW || USE_HYBRID
     /* Run shadow algorithm to build anchor heap with upper bounds */
 #if USE_TIMING
     uint64_t t_shadow_start = get_time_us();
@@ -1911,7 +1923,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         anchor_heap_extract_max(&gen.anchor_heap, &anchor);
 
         /* Early cutoff: if best anchor's upper bound can't beat current best, stop */
-#if USE_SHADOW && !USE_SHADOW_DEBUG
+#if (USE_SHADOW || USE_HYBRID) && !USE_SHADOW_DEBUG
         if (gen.best_equity > EQUITY_INITIAL_VALUE &&
             anchor.highest_possible_equity < gen.best_equity) {
             /* Count all anchors we're skipping */
@@ -1994,7 +2006,11 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
         }
 #endif
     }
-#else
+#endif  /* USE_SHADOW || USE_HYBRID */
+#if USE_HYBRID
+    } else {
+#endif
+#if !USE_SHADOW || USE_HYBRID
     /* Non-shadow mode: process rows in order (for validation) */
     /* Check if board is empty - skip vertical if so (symmetric) */
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
@@ -2015,6 +2031,9 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
             gen_for_row(&gen);
         }
     }
+#endif
+#if USE_HYBRID
+    }  /* end if (use_shadow_algorithm) */
 #endif
 
     /* Generate exchange moves if no good play found or bag allows */

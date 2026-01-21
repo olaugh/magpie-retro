@@ -214,6 +214,86 @@ $(OUT_DIR)/scrabble-csw24-noshadow.bin: $(BUILD_DIR)/csw24-noshadow/scrabble.elf
 	fi
 
 #
+# NWL23 hybrid (NoShadow for 0 blanks, Shadow for 1+ blanks)
+#
+nwl23-hybrid: dirs $(OUT_DIR)/scrabble-nwl23-hybrid.bin
+	@echo "NWL23 hybrid ROM: $(OUT_DIR)/scrabble-nwl23-hybrid.bin"
+
+$(BUILD_DIR)/nwl23-hybrid:
+	@mkdir -p $@
+
+$(BUILD_DIR)/nwl23-hybrid/kwg_data.c: | $(BUILD_DIR)/nwl23-hybrid
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/NWL23.kwg $@
+
+$(BUILD_DIR)/nwl23-hybrid/klv_data.c: data/NWL23.klv16 | $(BUILD_DIR)/nwl23-hybrid
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/nwl23-hybrid/kwg_data.o: $(BUILD_DIR)/nwl23-hybrid/kwg_data.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid/klv_data.o: $(BUILD_DIR)/nwl23-hybrid/klv_data.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+NWL23_HYBRID_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-hybrid/%.o,$(C_SOURCES))
+NWL23_HYBRID_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1 -DUSE_HYBRID=1
+
+$(BUILD_DIR)/nwl23-hybrid/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-hybrid
+	$(CC) $(NWL23_HYBRID_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23-hybrid
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid/scrabble.elf: $(BUILD_DIR)/nwl23-hybrid/boot.o $(NWL23_HYBRID_C_OBJECTS) $(BUILD_DIR)/nwl23-hybrid/kwg_data.o $(BUILD_DIR)/nwl23-hybrid/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-nwl23-hybrid.bin: $(BUILD_DIR)/nwl23-hybrid/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+#
+# CSW24 hybrid (NoShadow for 0 blanks, Shadow for 1+ blanks)
+#
+csw24-hybrid: dirs $(OUT_DIR)/scrabble-csw24-hybrid.bin
+	@echo "CSW24 hybrid ROM: $(OUT_DIR)/scrabble-csw24-hybrid.bin"
+
+$(BUILD_DIR)/csw24-hybrid:
+	@mkdir -p $@
+
+$(BUILD_DIR)/csw24-hybrid/kwg_data.c: | $(BUILD_DIR)/csw24-hybrid
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/CSW24.kwg $@
+
+$(BUILD_DIR)/csw24-hybrid/klv_data.c: data/CSW24.klv16 | $(BUILD_DIR)/csw24-hybrid
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/csw24-hybrid/kwg_data.o: $(BUILD_DIR)/csw24-hybrid/kwg_data.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid/klv_data.o: $(BUILD_DIR)/csw24-hybrid/klv_data.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+CSW24_HYBRID_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-hybrid/%.o,$(C_SOURCES))
+CSW24_HYBRID_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1 -DUSE_HYBRID=1
+
+$(BUILD_DIR)/csw24-hybrid/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-hybrid
+	$(CC) $(CSW24_HYBRID_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24-hybrid
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid/scrabble.elf: $(BUILD_DIR)/csw24-hybrid/boot.o $(CSW24_HYBRID_C_OBJECTS) $(BUILD_DIR)/csw24-hybrid/kwg_data.o $(BUILD_DIR)/csw24-hybrid/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-csw24-hybrid.bin: $(BUILD_DIR)/csw24-hybrid/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+#
 # Debug build with MULT_SMALL validation
 #
 .PHONY: debug
@@ -796,8 +876,90 @@ csw24-noshadow-timing: dirs $(OUT_DIR)/scrabble-csw24-noshadow-timing.bin
 	@echo "CSW24 noshadow timing ROM: $(OUT_DIR)/scrabble-csw24-noshadow-timing.bin"
 	@echo "CSW24 noshadow timing ELF: $(BUILD_DIR)/csw24-noshadow-timing/scrabble.elf"
 
+#
+# NWL23 Hybrid Timing Build
+#
+NWL23_HYBRID_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1 -DUSE_HYBRID=1
+NWL23_HYBRID_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-hybrid-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/nwl23-hybrid-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/nwl23-hybrid-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-hybrid-timing
+	$(CC) $(NWL23_HYBRID_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23-hybrid-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid-timing/kwg_data.c: | $(BUILD_DIR)/nwl23-hybrid-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/NWL23.kwg $@
+
+$(BUILD_DIR)/nwl23-hybrid-timing/klv_data.c: data/NWL23.klv16 | $(BUILD_DIR)/nwl23-hybrid-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/nwl23-hybrid-timing/kwg_data.o: $(BUILD_DIR)/nwl23-hybrid-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid-timing/klv_data.o: $(BUILD_DIR)/nwl23-hybrid-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-hybrid-timing/scrabble.elf: $(BUILD_DIR)/nwl23-hybrid-timing/boot.o $(NWL23_HYBRID_TIMING_C_OBJECTS) $(BUILD_DIR)/nwl23-hybrid-timing/kwg_data.o $(BUILD_DIR)/nwl23-hybrid-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-nwl23-hybrid-timing.bin: $(BUILD_DIR)/nwl23-hybrid-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+nwl23-hybrid-timing: dirs $(OUT_DIR)/scrabble-nwl23-hybrid-timing.bin
+	@echo "NWL23 hybrid timing ROM: $(OUT_DIR)/scrabble-nwl23-hybrid-timing.bin"
+	@echo "NWL23 hybrid timing ELF: $(BUILD_DIR)/nwl23-hybrid-timing/scrabble.elf"
+
+#
+# CSW24 Hybrid Timing Build
+#
+CSW24_HYBRID_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1 -DUSE_HYBRID=1
+CSW24_HYBRID_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-hybrid-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/csw24-hybrid-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/csw24-hybrid-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-hybrid-timing
+	$(CC) $(CSW24_HYBRID_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24-hybrid-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid-timing/kwg_data.c: | $(BUILD_DIR)/csw24-hybrid-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/CSW24.kwg $@
+
+$(BUILD_DIR)/csw24-hybrid-timing/klv_data.c: data/CSW24.klv16 | $(BUILD_DIR)/csw24-hybrid-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/csw24-hybrid-timing/kwg_data.o: $(BUILD_DIR)/csw24-hybrid-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid-timing/klv_data.o: $(BUILD_DIR)/csw24-hybrid-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-hybrid-timing/scrabble.elf: $(BUILD_DIR)/csw24-hybrid-timing/boot.o $(CSW24_HYBRID_TIMING_C_OBJECTS) $(BUILD_DIR)/csw24-hybrid-timing/kwg_data.o $(BUILD_DIR)/csw24-hybrid-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-csw24-hybrid-timing.bin: $(BUILD_DIR)/csw24-hybrid-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+csw24-hybrid-timing: dirs $(OUT_DIR)/scrabble-csw24-hybrid-timing.bin
+	@echo "CSW24 hybrid timing ROM: $(OUT_DIR)/scrabble-csw24-hybrid-timing.bin"
+	@echo "CSW24 hybrid timing ELF: $(BUILD_DIR)/csw24-hybrid-timing/scrabble.elf"
+
 # Build all timing variants
-timing-builds: nwl23-shadow-timing csw24-shadow-timing nwl23-noshadow-timing csw24-noshadow-timing
+timing-builds: nwl23-shadow-timing csw24-shadow-timing nwl23-noshadow-timing csw24-noshadow-timing nwl23-hybrid-timing csw24-hybrid-timing
 	@echo ""
 	@echo "=== Timing builds complete (with COLLECT_MOVE_STATS) ==="
 	@echo "Run bazel test //tests/gxtest:scrabble_timing_test to benchmark"

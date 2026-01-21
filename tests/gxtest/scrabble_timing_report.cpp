@@ -51,6 +51,18 @@ using gxtest::KLV;
 #ifndef ELF_CSW24_NOSHADOW_TIMING
 #define ELF_CSW24_NOSHADOW_TIMING "build/csw24-noshadow-timing/scrabble.elf"
 #endif
+#ifndef ROM_NWL23_HYBRID_TIMING
+#define ROM_NWL23_HYBRID_TIMING "out/scrabble-nwl23-hybrid-timing.bin"
+#endif
+#ifndef ROM_CSW24_HYBRID_TIMING
+#define ROM_CSW24_HYBRID_TIMING "out/scrabble-csw24-hybrid-timing.bin"
+#endif
+#ifndef ELF_NWL23_HYBRID_TIMING
+#define ELF_NWL23_HYBRID_TIMING "build/nwl23-hybrid-timing/scrabble.elf"
+#endif
+#ifndef ELF_CSW24_HYBRID_TIMING
+#define ELF_CSW24_HYBRID_TIMING "build/csw24-hybrid-timing/scrabble.elf"
+#endif
 #ifndef KLV_NWL23
 #define KLV_NWL23 "data/NWL23.klv16"
 #endif
@@ -62,10 +74,6 @@ constexpr int DEFAULT_NUM_GAMES = 100;
 constexpr int MAX_GAME_FRAMES = 100000;
 constexpr int MAX_MOVE_STATS = 64;
 constexpr uint32_t ADDR_TEST_SEED_OVERRIDE = 0xFFFFF0;
-
-// Estimated frame overhead for hybrid decision logic (checking blank count, etc.)
-// At 7.67 MHz, ~10-20 68000 cycles = ~1-3 frames. Use 5 frames as conservative estimate.
-constexpr int HYBRID_DECISION_OVERHEAD = 5;
 
 // Symbol addresses loaded from ELF
 struct TimingSymbols {
@@ -181,6 +189,7 @@ struct LexiconResults {
     std::string name;
     VariantStats shadow;
     VariantStats noshadow;
+    VariantStats hybrid;
 };
 
 uint32_t LoadSymbolAddress(const char* elf_path, const char* symbol_name) {
@@ -349,6 +358,7 @@ VariantStats RunBenchmarkVariant(const char* rom_path, const char* elf_path,
 void WriteTableRow(std::ofstream& out, const std::string& label,
                    double s_mean, double s_med, uint32_t s_max,
                    double n_mean, double n_med, uint32_t n_max,
+                   double h_mean,
                    int count, int max_count) {
     std::string faster = (s_mean < n_mean) ? "Shadow" : "NoShadow";
     double speedup = (s_mean < n_mean) ? (n_mean / std::max(s_mean, 1.0)) : (s_mean / std::max(n_mean, 1.0));
@@ -358,9 +368,6 @@ void WriteTableRow(std::ofstream& out, const std::string& label,
     bool significant = speedup >= 1.15;
     double count_opacity = std::min(0.4, 0.1 + 0.3 * count / std::max(max_count, 1));
     int bar_width = std::min(100, (int)((speedup - 1.0) * 100));
-
-    // Hybrid estimate: pick the faster one + decision overhead
-    double hybrid_est = std::min(s_mean, n_mean) + HYBRID_DECISION_OVERHEAD;
 
     out << "<tr class=\"" << row_class << (significant ? " significant" : "") << "\" "
         << "data-speedup=\"" << std::fixed << std::setprecision(3) << speedup << "\" "
@@ -378,7 +385,7 @@ void WriteTableRow(std::ofstream& out, const std::string& label,
         << "<div class=\"speedup-bar\" style=\"width:" << bar_width << "%\"></div>"
         << "<span class=\"pill" << (speedup >= 1.5 ? " high" : "") << "\">" << std::setprecision(2) << speedup << "x</span>"
         << "</td>\n";
-    out << "  <td class=\"hybrid-col\">" << std::setprecision(1) << hybrid_est << "</td>\n";
+    out << "  <td class=\"hybrid-col\">" << std::setprecision(1) << h_mean << "</td>\n";
     out << "</tr>\n";
 }
 
@@ -579,37 +586,27 @@ tr.significant { font-weight: 500; }
 
 )";
 
-    // Calculate and show overall hybrid estimate across all lexicons
+    // Calculate overall stats across all lexicons using actual hybrid data
     double total_shadow = 0, total_noshadow = 0, total_hybrid = 0;
     int total_count = 0;
     for (const auto& lex : results) {
-        for (int b = 0; b <= 2; b++) {
-            auto sit = lex.shadow.by_blanks.find(b);
-            auto nit = lex.noshadow.by_blanks.find(b);
-            if (sit == lex.shadow.by_blanks.end() && nit == lex.noshadow.by_blanks.end()) continue;
-            double s_mean = (sit != lex.shadow.by_blanks.end()) ? sit->second.Mean() : 0;
-            double n_mean = (nit != lex.noshadow.by_blanks.end()) ? nit->second.Mean() : 0;
-            int cnt = std::max((sit != lex.shadow.by_blanks.end()) ? sit->second.count : 0,
-                               (nit != lex.noshadow.by_blanks.end()) ? nit->second.count : 0);
-            double best = (b == 0) ? n_mean : s_mean;
-            total_shadow += s_mean * cnt;
-            total_noshadow += n_mean * cnt;
-            total_hybrid += (best + HYBRID_DECISION_OVERHEAD) * cnt;
-            total_count += cnt;
-        }
+        total_shadow += lex.shadow.overall.sum;
+        total_noshadow += lex.noshadow.overall.sum;
+        total_hybrid += lex.hybrid.overall.sum;
+        total_count += lex.hybrid.overall.count;
     }
     double overall_shadow = total_count > 0 ? total_shadow / total_count : 0;
     double overall_noshadow = total_count > 0 ? total_noshadow / total_count : 0;
     double overall_hybrid = total_count > 0 ? total_hybrid / total_count : 0;
 
     out << "<div class=\"card\" style=\"margin-bottom:20px;background:linear-gradient(135deg,#f0fdf4 0%,#dbeafe 100%);border:1px solid #86efac\">\n";
-    out << "  <h3 style=\"margin-bottom:12px\">Overall Hybrid Performance Estimate</h3>\n";
+    out << "  <h3 style=\"margin-bottom:12px\">Overall Hybrid Performance (Actual)</h3>\n";
     out << "  <div class=\"stats-row\">\n";
     out << "    <div class=\"stat-box shadow\"><div class=\"label\">Shadow Only</div><div class=\"value\">"
         << std::fixed << std::setprecision(1) << overall_shadow << " frames</div></div>\n";
     out << "    <div class=\"stat-box noshadow\"><div class=\"label\">NoShadow Only</div><div class=\"value\">"
         << overall_noshadow << " frames</div></div>\n";
-    out << "    <div class=\"stat-box\" style=\"background:#fef3c7\"><div class=\"label\">Hybrid (+" << HYBRID_DECISION_OVERHEAD << "f overhead)</div><div class=\"value\" style=\"color:#92400e\">"
+    out << "    <div class=\"stat-box\" style=\"background:#fef3c7\"><div class=\"label\">Hybrid (Actual)</div><div class=\"value\" style=\"color:#92400e\">"
         << overall_hybrid << " frames</div></div>\n";
     out << "  </div>\n";
     out << "  <p style=\"margin:12px 0 0 0;font-size:0.875rem;color:#374151\">Hybrid improves on Shadow-only by <strong>"
@@ -631,23 +628,8 @@ tr.significant { font-weight: 500; }
         const auto& lex = results[idx];
         out << "<div class=\"tab-content" << (idx == 0 ? " active" : "") << "\" id=\"tab" << idx << "\">\n";
 
-        // Calculate hybrid estimate: use noshadow for 0 blanks, shadow for 1+ blanks
-        double hybrid_total = 0;
-        int hybrid_count = 0;
-        for (int b = 0; b <= 2; b++) {
-            auto sit = lex.shadow.by_blanks.find(b);
-            auto nit = lex.noshadow.by_blanks.find(b);
-            if (sit == lex.shadow.by_blanks.end() && nit == lex.noshadow.by_blanks.end()) continue;
-            double s_mean = (sit != lex.shadow.by_blanks.end()) ? sit->second.Mean() : 0;
-            double n_mean = (nit != lex.noshadow.by_blanks.end()) ? nit->second.Mean() : 0;
-            int cnt = std::max((sit != lex.shadow.by_blanks.end()) ? sit->second.count : 0,
-                               (nit != lex.noshadow.by_blanks.end()) ? nit->second.count : 0);
-            // Use noshadow for 0 blanks (typically faster), shadow for 1+ blanks
-            double best = (b == 0) ? n_mean : s_mean;
-            hybrid_total += (best + HYBRID_DECISION_OVERHEAD) * cnt;
-            hybrid_count += cnt;
-        }
-        double hybrid_mean = hybrid_count > 0 ? hybrid_total / hybrid_count : 0;
+        // Use actual hybrid data
+        double hybrid_mean = lex.hybrid.overall.Mean();
 
         // Summary stats
         double hybrid_vs_shadow = lex.shadow.overall.Mean() / std::max(hybrid_mean, 1.0);
@@ -657,7 +639,7 @@ tr.significant { font-weight: 500; }
             << std::fixed << std::setprecision(1) << lex.shadow.overall.Mean() << "</div></div>\n";
         out << "  <div class=\"stat-box noshadow\"><div class=\"label\">NoShadow Mean</div><div class=\"value\">"
             << lex.noshadow.overall.Mean() << "</div></div>\n";
-        out << "  <div class=\"stat-box\" style=\"background:#fef3c7\"><div class=\"label\">Hybrid Est (+" << HYBRID_DECISION_OVERHEAD << "f)</div><div class=\"value\" style=\"color:#92400e\">"
+        out << "  <div class=\"stat-box\" style=\"background:#fef3c7\"><div class=\"label\">Hybrid (Actual)</div><div class=\"value\" style=\"color:#92400e\">"
             << hybrid_mean << "</div></div>\n";
         out << "  <div class=\"stat-box\"><div class=\"label\">Hybrid vs Shadow</div><div class=\"value\">"
             << std::setprecision(2) << hybrid_vs_shadow << "x</div></div>\n";
@@ -673,7 +655,7 @@ tr.significant { font-weight: 500; }
                 << "<th class=\"shadow-col\">Shadow Mean</th><th class=\"shadow-col\">Shadow Med</th><th class=\"shadow-col\">Shadow Max</th>"
                 << "<th class=\"noshadow-col\">NoShadow Mean</th><th class=\"noshadow-col\">NoShadow Med</th><th class=\"noshadow-col\">NoShadow Max</th>"
                 << "<th>Winner</th><th>Speedup</th>"
-                << "<th class=\"hybrid-col\">Hybrid Est</th>"
+                << "<th class=\"hybrid-col\">Hybrid</th>"
                 << "</tr></thead>\n<tbody>\n";
         };
 
@@ -696,10 +678,12 @@ tr.significant { font-weight: 500; }
             double n_mean = (nit != lex.noshadow.by_blanks.end()) ? nit->second.Mean() : 0;
             double n_med = (nit != lex.noshadow.by_blanks.end()) ? nit->second.Median() : 0;
             uint32_t n_max = (nit != lex.noshadow.by_blanks.end()) ? nit->second.Max() : 0;
+            auto hit = lex.hybrid.by_blanks.find(blanks);
+            double h_mean = (hit != lex.hybrid.by_blanks.end()) ? hit->second.Mean() : 0;
             int count = std::max((sit != lex.shadow.by_blanks.end()) ? sit->second.count : 0,
                                   (nit != lex.noshadow.by_blanks.end()) ? nit->second.count : 0);
             WriteTableRow(out, std::to_string(blanks) + " blank" + (blanks != 1 ? "s" : ""),
-                          s_mean, s_med, s_max, n_mean, n_med, n_max, count, max_blank_count);
+                          s_mean, s_med, s_max, n_mean, n_med, n_max, h_mean, count, max_blank_count);
         }
         out << "</tbody></table>\n</div>\n\n";
 
@@ -740,16 +724,18 @@ tr.significant { font-weight: 500; }
         for (const std::string& vcb : sorted_vcb) {
             auto sit = lex.shadow.by_vcb.find(vcb);
             auto nit = lex.noshadow.by_vcb.find(vcb);
+            auto hit = lex.hybrid.by_vcb.find(vcb);
             double s_mean = (sit != lex.shadow.by_vcb.end()) ? sit->second.Mean() : 0;
             double s_med = (sit != lex.shadow.by_vcb.end()) ? sit->second.Median() : 0;
             uint32_t s_max = (sit != lex.shadow.by_vcb.end()) ? sit->second.Max() : 0;
             double n_mean = (nit != lex.noshadow.by_vcb.end()) ? nit->second.Mean() : 0;
             double n_med = (nit != lex.noshadow.by_vcb.end()) ? nit->second.Median() : 0;
             uint32_t n_max = (nit != lex.noshadow.by_vcb.end()) ? nit->second.Max() : 0;
+            double h_mean = (hit != lex.hybrid.by_vcb.end()) ? hit->second.Mean() : 0;
             int count = std::max((sit != lex.shadow.by_vcb.end()) ? sit->second.count : 0,
                                   (nit != lex.noshadow.by_vcb.end()) ? nit->second.count : 0);
             if (count < 5) continue;
-            WriteTableRow(out, vcb, s_mean, s_med, s_max, n_mean, n_med, n_max, count, max_vcb_count);
+            WriteTableRow(out, vcb, s_mean, s_med, s_max, n_mean, n_med, n_max, h_mean, count, max_vcb_count);
         }
         out << "</tbody></table>\n</div>\n\n";
 
@@ -774,12 +760,14 @@ tr.significant { font-weight: 500; }
         for (int bucket : all_buckets) {
             auto sit = lex.shadow.by_leave.find(bucket);
             auto nit = lex.noshadow.by_leave.find(bucket);
+            auto hit = lex.hybrid.by_leave.find(bucket);
             double s_mean = (sit != lex.shadow.by_leave.end()) ? sit->second.Mean() : 0;
             double s_med = (sit != lex.shadow.by_leave.end()) ? sit->second.Median() : 0;
             uint32_t s_max = (sit != lex.shadow.by_leave.end()) ? sit->second.Max() : 0;
             double n_mean = (nit != lex.noshadow.by_leave.end()) ? nit->second.Mean() : 0;
             double n_med = (nit != lex.noshadow.by_leave.end()) ? nit->second.Median() : 0;
             uint32_t n_max = (nit != lex.noshadow.by_leave.end()) ? nit->second.Max() : 0;
+            double h_mean = (hit != lex.hybrid.by_leave.end()) ? hit->second.Mean() : 0;
             int count = std::max((sit != lex.shadow.by_leave.end()) ? sit->second.count : 0,
                                   (nit != lex.noshadow.by_leave.end()) ? nit->second.count : 0);
             if (count < 3) continue;
@@ -787,7 +775,7 @@ tr.significant { font-weight: 500; }
             double bucket_high = (bucket + 1) * 2.5;
             std::ostringstream label;
             label << std::fixed << std::setprecision(1) << bucket_low << " to " << bucket_high;
-            WriteTableRow(out, label.str(), s_mean, s_med, s_max, n_mean, n_med, n_max, count, max_leave_count);
+            WriteTableRow(out, label.str(), s_mean, s_med, s_max, n_mean, n_med, n_max, h_mean, count, max_leave_count);
         }
         out << "</tbody></table>\n</div>\n\n";
 
@@ -894,6 +882,8 @@ int main(int argc, char* argv[]) {
                                       klv_nwl, "Shadow", num_games);
     nwl.noshadow = RunBenchmarkVariant(ROM_NWL23_NOSHADOW_TIMING, ELF_NWL23_NOSHADOW_TIMING,
                                         klv_nwl, "NoShadow", num_games);
+    nwl.hybrid = RunBenchmarkVariant(ROM_NWL23_HYBRID_TIMING, ELF_NWL23_HYBRID_TIMING,
+                                      klv_nwl, "Hybrid", num_games);
     results.push_back(nwl);
 
     // CSW24
@@ -904,6 +894,8 @@ int main(int argc, char* argv[]) {
                                       klv_csw, "Shadow", num_games);
     csw.noshadow = RunBenchmarkVariant(ROM_CSW24_NOSHADOW_TIMING, ELF_CSW24_NOSHADOW_TIMING,
                                         klv_csw, "NoShadow", num_games);
+    csw.hybrid = RunBenchmarkVariant(ROM_CSW24_HYBRID_TIMING, ELF_CSW24_HYBRID_TIMING,
+                                      klv_csw, "Hybrid", num_games);
     results.push_back(csw);
 
     // Generate report
