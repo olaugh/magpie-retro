@@ -284,4 +284,72 @@ TEST(CSW24, AllSeeds) {
               << speedup << "%" << std::endl;
 }
 
+// ---------------------------------------------------------------------------
+// 100-Game Validation Test (for MULT_SMALL debug assertions)
+// Run with: bazel test //tests/gxtest:scrabble_validation_test
+// ---------------------------------------------------------------------------
+
+constexpr int VALIDATION_NUM_GAMES = 100;
+
+TEST(Validation, NWL23_100Games) {
+    // Run 100 games on NWL23 shadow ROM to validate MULT_SMALL assertions
+    // If built with MULT_SMALL_DEBUG=1, any invalid multiplier will crash
+    std::vector<int> fds;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        fds.push_back(ForkGame(ROM_NWL23_SHADOW, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    int completed = 0;
+    uint32_t total_frames = 0;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        GameResult result = ReadGameResult(fds[seed]);
+        if (result.completed) {
+            completed++;
+            total_frames += result.frames;
+        }
+    }
+
+    std::cout << "\n=== NWL23 Validation: " << completed << "/" << VALIDATION_NUM_GAMES
+              << " games completed ===" << std::endl;
+    std::cout << "Total frames: " << total_frames << std::endl;
+
+    EXPECT_EQ(completed, VALIDATION_NUM_GAMES) << "All games should complete";
+}
+
+TEST(Validation, CSW24_100Games) {
+    // Run 100 games on CSW24 shadow ROM to validate MULT_SMALL assertions
+    std::vector<int> fds;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        fds.push_back(ForkGame(ROM_CSW24_SHADOW, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    int completed = 0;
+    uint32_t total_frames = 0;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        GameResult result = ReadGameResult(fds[seed]);
+        if (result.completed) {
+            completed++;
+            total_frames += result.frames;
+        }
+    }
+
+    std::cout << "\n=== CSW24 Validation: " << completed << "/" << VALIDATION_NUM_GAMES
+              << " games completed ===" << std::endl;
+    std::cout << "Total frames: " << total_frames << std::endl;
+
+    EXPECT_EQ(completed, VALIDATION_NUM_GAMES) << "All games should complete";
+}
+
 } // namespace

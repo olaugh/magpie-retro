@@ -32,6 +32,17 @@
 #define USE_SHADOW_DEBUG 0
 #endif
 
+/* Debug mode for validating MULT_SMALL arguments */
+#ifndef MULT_SMALL_DEBUG
+#define MULT_SMALL_DEBUG 0
+#endif
+
+#if MULT_SMALL_DEBUG
+/* Debug assertion: halts CPU on failure (writes to invalid address).
+ * Uses GCC statement expression to work inside comma expressions. */
+#define DEBUG_ASSERT(cond) ({ if (!(cond)) *(volatile int *)0xDEAD = 0; (void)0; })
+#endif
+
 /* Timing instrumentation for profiling */
 #ifndef USE_TIMING
 #define USE_TIMING 0
@@ -201,8 +212,14 @@ typedef struct {
  * Returns the result (does not modify val in place).
  * Works with any integer type. Uses adds to avoid 70-cycle MULS.
  */
+#if MULT_SMALL_DEBUG
+#define MULT_SMALL(val, m) \
+    (DEBUG_ASSERT((m) >= 1 && (m) <= 3), \
+     (m) == 2 ? ((val) + (val)) : (m) == 3 ? ((val) + (val) + (val)) : (val))
+#else
 #define MULT_SMALL(val, m) \
     ((m) == 2 ? ((val) + (val)) : (m) == 3 ? ((val) + (val) + (val)) : (val))
+#endif
 
 /* MULT_BY_SMALL: Multiply var in place by m (1, 2, or 3). */
 #define MULT_BY_SMALL(var, m) do { (var) = MULT_SMALL((var), (m)); } while(0)
