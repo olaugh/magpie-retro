@@ -116,6 +116,11 @@ cc_test(
         "//:out/scrabble-csw24-noshadow-timing.bin",
         "//:build/nwl23-noshadow-timing/scrabble.elf",
         "//:build/csw24-noshadow-timing/scrabble.elf",
+        # Hybrid timing ROMs and ELFs
+        "//:out/scrabble-nwl23-hybrid-timing.bin",
+        "//:out/scrabble-csw24-hybrid-timing.bin",
+        "//:build/nwl23-hybrid-timing/scrabble.elf",
+        "//:build/csw24-hybrid-timing/scrabble.elf",
         # KLV files for leave value computation
         "//:data/NWL23.klv16",
         "//:data/CSW24.klv16",
@@ -131,6 +136,11 @@ cc_test(
         'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
         'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
         'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        # Hybrid timing
+        'ROM_NWL23_HYBRID_TIMING=\\"out/scrabble-nwl23-hybrid-timing.bin\\"',
+        'ROM_CSW24_HYBRID_TIMING=\\"out/scrabble-csw24-hybrid-timing.bin\\"',
+        'ELF_NWL23_HYBRID_TIMING=\\"build/nwl23-hybrid-timing/scrabble.elf\\"',
+        'ELF_CSW24_HYBRID_TIMING=\\"build/csw24-hybrid-timing/scrabble.elf\\"',
         # KLV files
         'KLV_NWL23=\\"data/NWL23.klv16\\"',
         'KLV_CSW24=\\"data/CSW24.klv16\\"',
@@ -168,6 +178,11 @@ cc_binary(
         "//:out/scrabble-csw24-noshadow-timing.bin",
         "//:build/nwl23-noshadow-timing/scrabble.elf",
         "//:build/csw24-noshadow-timing/scrabble.elf",
+        # Hybrid timing ROMs and ELFs
+        "//:out/scrabble-nwl23-hybrid-timing.bin",
+        "//:out/scrabble-csw24-hybrid-timing.bin",
+        "//:build/nwl23-hybrid-timing/scrabble.elf",
+        "//:build/csw24-hybrid-timing/scrabble.elf",
         # KLV files for leave value computation
         "//:data/NWL23.klv16",
         "//:data/CSW24.klv16",
@@ -183,6 +198,11 @@ cc_binary(
         'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
         'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
         'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        # Hybrid timing
+        'ROM_NWL23_HYBRID_TIMING=\\"out/scrabble-nwl23-hybrid-timing.bin\\"',
+        'ROM_CSW24_HYBRID_TIMING=\\"out/scrabble-csw24-hybrid-timing.bin\\"',
+        'ELF_NWL23_HYBRID_TIMING=\\"build/nwl23-hybrid-timing/scrabble.elf\\"',
+        'ELF_CSW24_HYBRID_TIMING=\\"build/csw24-hybrid-timing/scrabble.elf\\"',
         # KLV files
         'KLV_NWL23=\\"data/NWL23.klv16\\"',
         'KLV_CSW24=\\"data/CSW24.klv16\\"',
