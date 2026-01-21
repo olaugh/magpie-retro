@@ -108,3 +108,42 @@ disassembly_site(
     binary = "build/csw24-shadow/scrabble.elf",
     srcs = [":genesis_sources"],
 )
+
+# ---------------------------------------------------------------------------
+# Play Site (EmulatorJS-based web emulator)
+# ---------------------------------------------------------------------------
+#
+# Builds the web-based emulator site with ROMs included.
+# Prerequisite: Run `make nwl23-shadow csw24-shadow` first to build ROMs.
+#
+# Build with: bazel build //:play_site
+# Output: bazel-bin/play_site/ (directory ready for GitHub Pages)
+#
+# To deploy: copy contents of bazel-bin/play_site/ to docs/play/
+# Or run: bazel build //:play_site && cp -r bazel-bin/play_site/* docs/play/
+
+genrule(
+    name = "play_site",
+    srcs = [
+        "docs/play/emulator.js",
+        "docs/play/index.html",
+        "docs/play/style.css",
+        "out/scrabble-nwl23-shadow.bin",
+        "out/scrabble-csw24-shadow.bin",
+    ],
+    outs = [
+        "play_site/index.html",
+        "play_site/style.css",
+        "play_site/emulator.js",
+        "play_site/roms/shadow-nwl.bin",
+        "play_site/roms/shadow-csw.bin",
+    ],
+    cmd = """
+        mkdir -p $(@D)/play_site/roms
+        cp $(location docs/play/index.html) $(@D)/play_site/index.html
+        cp $(location docs/play/style.css) $(@D)/play_site/style.css
+        cp $(location docs/play/emulator.js) $(@D)/play_site/emulator.js
+        cp $(location out/scrabble-nwl23-shadow.bin) $(@D)/play_site/roms/shadow-nwl.bin
+        cp $(location out/scrabble-csw24-shadow.bin) $(@D)/play_site/roms/shadow-csw.bin
+    """,
+)

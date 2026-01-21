@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Scrabble - Genesis Emulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shadow Scrabble</h1>
+            <p class="subtitle">Genesis / Mega Drive</p>
+        </header>
+
+        <div class="controls">
+            <label for="rom-select">Dictionary:</label>
+            <select id="rom-select">
+                <option value="nwl" selected>Shadow NWL (North American)</option>
+                <option value="csw">Shadow CSW (International)</option>
+            </select>
+            <button id="load-btn" class="load-button">Load Game</button>
+            <button id="turbo-btn" class="turbo-button">Turbo: OFF</button>
+            <span id="fps-display" class="fps-display">FPS: --</span>
+        </div>
+
+        <div id="emulator-container">
+            <div id="game"></div>
+        </div>
+
+        <div class="instructions">
+            <h2>Controls</h2>
+            <div class="control-grid">
+                <div class="control-item">
+                    <strong>D-Pad:</strong> Arrow Keys
+                </div>
+                <div class="control-item">
+                    <strong>A Button:</strong> Z
+                </div>
+                <div class="control-item">
+                    <strong>B Button:</strong> X
+                </div>
+                <div class="control-item">
+                    <strong>C Button:</strong> C
+                </div>
+                <div class="control-item">
+                    <strong>Start:</strong> Enter
+                </div>
+                <div class="control-item">
+                    <strong>Mode:</strong> M (Settings menu)
+                </div>
+                <div class="control-item">
+                    <strong>Toggle Turbo:</strong> Space
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Powered by <a href="https://emulatorjs.org/" target="_blank" rel="noopener">EmulatorJS</a></p>
+        </footer>
+    </div>
+
+    <script src="emulator.js"></script>
+</body>
+</html>
