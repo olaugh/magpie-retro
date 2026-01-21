@@ -13,5 +13,5 @@ local_path_override(
 
 bazel_dep(name = "gxtest", version = "1.0.0")
 bazel_dep(name = "googletest", version = "1.15.2")
-bazel_dep(name = "rules_cc", version = "0.1.0")
+bazel_dep(name = "rules_cc", version = "0.1.1")
 bazel_dep(name = "platforms", version = "0.0.11")
