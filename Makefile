@@ -623,3 +623,181 @@ debug-builds: nwl23-shadow-debug csw24-shadow-debug
 	@echo "Use these for disassembly explorer:"
 	@echo "  bazel build //:disasm_nwl23_shadow_debug"
 	@echo "  bazel build //:disasm_csw24_shadow_debug"
+
+#
+# Timing builds for benchmarking (COLLECT_MOVE_STATS=1)
+# These builds instrument move generation to collect per-move timing statistics
+#
+
+# Timing compiler flags
+TIMING_CFLAGS = $(CFLAGS) -DCOLLECT_MOVE_STATS=1
+
+#
+# NWL23 Shadow Timing Build
+#
+NWL23_SHADOW_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1
+NWL23_SHADOW_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-shadow-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/nwl23-shadow-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/nwl23-shadow-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-shadow-timing
+	$(CC) $(NWL23_SHADOW_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23-shadow-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-timing/kwg_data.c: | $(BUILD_DIR)/nwl23-shadow-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/NWL23.kwg $@
+
+$(BUILD_DIR)/nwl23-shadow-timing/klv_data.c: data/NWL23.klv16 | $(BUILD_DIR)/nwl23-shadow-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/nwl23-shadow-timing/kwg_data.o: $(BUILD_DIR)/nwl23-shadow-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-timing/klv_data.o: $(BUILD_DIR)/nwl23-shadow-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-shadow-timing/scrabble.elf: $(BUILD_DIR)/nwl23-shadow-timing/boot.o $(NWL23_SHADOW_TIMING_C_OBJECTS) $(BUILD_DIR)/nwl23-shadow-timing/kwg_data.o $(BUILD_DIR)/nwl23-shadow-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-nwl23-shadow-timing.bin: $(BUILD_DIR)/nwl23-shadow-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+nwl23-shadow-timing: dirs $(OUT_DIR)/scrabble-nwl23-shadow-timing.bin
+	@echo "NWL23 shadow timing ROM: $(OUT_DIR)/scrabble-nwl23-shadow-timing.bin"
+	@echo "NWL23 shadow timing ELF: $(BUILD_DIR)/nwl23-shadow-timing/scrabble.elf"
+
+#
+# CSW24 Shadow Timing Build
+#
+CSW24_SHADOW_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1
+CSW24_SHADOW_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-shadow-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/csw24-shadow-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/csw24-shadow-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-shadow-timing
+	$(CC) $(CSW24_SHADOW_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24-shadow-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-timing/kwg_data.c: | $(BUILD_DIR)/csw24-shadow-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/CSW24.kwg $@
+
+$(BUILD_DIR)/csw24-shadow-timing/klv_data.c: data/CSW24.klv16 | $(BUILD_DIR)/csw24-shadow-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/csw24-shadow-timing/kwg_data.o: $(BUILD_DIR)/csw24-shadow-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-timing/klv_data.o: $(BUILD_DIR)/csw24-shadow-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-shadow-timing/scrabble.elf: $(BUILD_DIR)/csw24-shadow-timing/boot.o $(CSW24_SHADOW_TIMING_C_OBJECTS) $(BUILD_DIR)/csw24-shadow-timing/kwg_data.o $(BUILD_DIR)/csw24-shadow-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-csw24-shadow-timing.bin: $(BUILD_DIR)/csw24-shadow-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+csw24-shadow-timing: dirs $(OUT_DIR)/scrabble-csw24-shadow-timing.bin
+	@echo "CSW24 shadow timing ROM: $(OUT_DIR)/scrabble-csw24-shadow-timing.bin"
+	@echo "CSW24 shadow timing ELF: $(BUILD_DIR)/csw24-shadow-timing/scrabble.elf"
+
+#
+# NWL23 NoShadow Timing Build
+#
+NWL23_NOSHADOW_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=0
+NWL23_NOSHADOW_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-noshadow-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/nwl23-noshadow-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/nwl23-noshadow-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-noshadow-timing
+	$(CC) $(NWL23_NOSHADOW_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-noshadow-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/nwl23-noshadow-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/nwl23-noshadow-timing/kwg_data.c: | $(BUILD_DIR)/nwl23-noshadow-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/NWL23.kwg $@
+
+$(BUILD_DIR)/nwl23-noshadow-timing/klv_data.c: data/NWL23.klv16 | $(BUILD_DIR)/nwl23-noshadow-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/nwl23-noshadow-timing/kwg_data.o: $(BUILD_DIR)/nwl23-noshadow-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-noshadow-timing/klv_data.o: $(BUILD_DIR)/nwl23-noshadow-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/nwl23-noshadow-timing/scrabble.elf: $(BUILD_DIR)/nwl23-noshadow-timing/boot.o $(NWL23_NOSHADOW_TIMING_C_OBJECTS) $(BUILD_DIR)/nwl23-noshadow-timing/kwg_data.o $(BUILD_DIR)/nwl23-noshadow-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-nwl23-noshadow-timing.bin: $(BUILD_DIR)/nwl23-noshadow-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+nwl23-noshadow-timing: dirs $(OUT_DIR)/scrabble-nwl23-noshadow-timing.bin
+	@echo "NWL23 noshadow timing ROM: $(OUT_DIR)/scrabble-nwl23-noshadow-timing.bin"
+	@echo "NWL23 noshadow timing ELF: $(BUILD_DIR)/nwl23-noshadow-timing/scrabble.elf"
+
+#
+# CSW24 NoShadow Timing Build
+#
+CSW24_NOSHADOW_TIMING_CFLAGS = $(TIMING_CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=0
+CSW24_NOSHADOW_TIMING_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-noshadow-timing/%.o,$(C_SOURCES))
+
+$(BUILD_DIR)/csw24-noshadow-timing:
+	@mkdir -p $@
+
+$(BUILD_DIR)/csw24-noshadow-timing/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-noshadow-timing
+	$(CC) $(CSW24_NOSHADOW_TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-noshadow-timing/%.o: $(SRC_DIR)/%.s | $(BUILD_DIR)/csw24-noshadow-timing
+	$(AS) $(ASFLAGS) -o $@ $<
+
+$(BUILD_DIR)/csw24-noshadow-timing/kwg_data.c: | $(BUILD_DIR)/csw24-noshadow-timing
+	python3 tools/kwg2c.py $(MAGPIE_DATA)/CSW24.kwg $@
+
+$(BUILD_DIR)/csw24-noshadow-timing/klv_data.c: data/CSW24.klv16 | $(BUILD_DIR)/csw24-noshadow-timing
+	python3 tools/klv2c.py $< $@
+
+$(BUILD_DIR)/csw24-noshadow-timing/kwg_data.o: $(BUILD_DIR)/csw24-noshadow-timing/kwg_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-noshadow-timing/klv_data.o: $(BUILD_DIR)/csw24-noshadow-timing/klv_data.c
+	$(CC) $(TIMING_CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/csw24-noshadow-timing/scrabble.elf: $(BUILD_DIR)/csw24-noshadow-timing/boot.o $(CSW24_NOSHADOW_TIMING_C_OBJECTS) $(BUILD_DIR)/csw24-noshadow-timing/kwg_data.o $(BUILD_DIR)/csw24-noshadow-timing/klv_data.o
+	$(LD) $(LDFLAGS) -o $@ $^ $(LIBGCC)
+
+$(OUT_DIR)/scrabble-csw24-noshadow-timing.bin: $(BUILD_DIR)/csw24-noshadow-timing/scrabble.elf | dirs
+	$(OBJCOPY) -O binary $< $@
+	@SIZE=$$(stat -f%z $@ 2>/dev/null || stat -c%s $@); \
+	if [ $$SIZE -lt 131072 ]; then \
+		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
+	fi
+
+csw24-noshadow-timing: dirs $(OUT_DIR)/scrabble-csw24-noshadow-timing.bin
+	@echo "CSW24 noshadow timing ROM: $(OUT_DIR)/scrabble-csw24-noshadow-timing.bin"
+	@echo "CSW24 noshadow timing ELF: $(BUILD_DIR)/csw24-noshadow-timing/scrabble.elf"
+
+# Build all timing variants
+timing-builds: nwl23-shadow-timing csw24-shadow-timing nwl23-noshadow-timing csw24-noshadow-timing
+	@echo ""
+	@echo "=== Timing builds complete (with COLLECT_MOVE_STATS) ==="
+	@echo "Run bazel test //tests/gxtest:scrabble_timing_test to benchmark"

@@ -144,6 +144,28 @@ volatile int16_t test_player0_score;
 volatile int16_t test_player1_score;
 volatile uint8_t test_game_over;
 
+/* Per-move statistics for timing analysis (exported for gxtest).
+ * Guarded by COLLECT_MOVE_STATS to avoid impacting normal play.
+ * Enable with: make ... DEBUG_FLAGS="-DCOLLECT_MOVE_STATS=1" */
+#ifndef COLLECT_MOVE_STATS
+#define COLLECT_MOVE_STATS 0
+#endif
+
+#if COLLECT_MOVE_STATS
+#define MAX_MOVE_STATS 64  /* Max moves per game (typically ~25-30) */
+typedef struct {
+    uint16_t frames;       /* Frames elapsed for this move */
+    uint8_t blank_count;   /* Number of blanks on rack (0-2) */
+    uint8_t rack_size;     /* Tiles on rack (1-7) */
+    uint8_t player;        /* Which player (0 or 1) */
+    uint8_t padding;       /* Alignment */
+    char rack[8];          /* Rack as ASCII string, e.g. "RETINAS" or "PO?LISH" */
+} MoveStats;  /* 14 bytes */
+
+MoveStats move_stats[MAX_MOVE_STATS];
+uint16_t move_stats_count = 0;
+#endif
+
 /* Move history for display */
 #define MAX_HISTORY 28
 typedef struct {
@@ -277,6 +299,9 @@ new_game:
     game.passes = 0;
     game.game_over = 0;
     history_count = 0;
+#if COLLECT_MOVE_STATS
+    move_stats_count = 0;  /* Reset move stats for timing analysis */
+#endif
     test_game_over = 0;  /* Reset test flag for gxtest */
 
     /* Start timing from here - includes rendering, movegen, everything */
@@ -291,12 +316,38 @@ new_game:
         /* Show current state before generating moves */
         update_display(&game, history, history_count, last_move_frames);
 
+#if COLLECT_MOVE_STATS
+        /* Capture rack state before move generation for stats */
+        Rack *rack = &game.players[game.current_player].rack;
+        uint8_t pre_blank_count = rack->counts[0];  /* Blank is letter 0 */
+        uint8_t pre_rack_size = rack->total;
+        char pre_rack_string[8];
+        rack_to_string(rack, pre_rack_string);
+#endif
+
         /* Generate moves for current player, tracking frame count */
         uint32_t start_frames = frame_counter;
+#if COLLECT_MOVE_STATS
+        generate_moves(&game.board, rack, kwg_data, &klv, &game.bag, &moves);
+#else
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
+#endif
         last_move_frames = frame_counter - start_frames;
+
+#if COLLECT_MOVE_STATS
+        /* Record move stats */
+        if (move_stats_count < MAX_MOVE_STATS) {
+            MoveStats *ms = &move_stats[move_stats_count++];
+            ms->frames = (uint16_t)last_move_frames;
+            ms->blank_count = pre_blank_count;
+            ms->rack_size = pre_rack_size;
+            ms->player = game.current_player;
+            ms->padding = 0;
+            for (int i = 0; i < 8; i++) ms->rack[i] = pre_rack_string[i];
+        }
+#endif
 
         if (moves.count > 0) {
             /* Play the best move (always index 0) */

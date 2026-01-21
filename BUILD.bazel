@@ -23,6 +23,18 @@ exports_files([
     # Debug builds (with DWARF symbols for disassembly)
     "build/nwl23-shadow-debug/scrabble.elf",
     "build/csw24-shadow-debug/scrabble.elf",
+    # Timing builds (with COLLECT_MOVE_STATS instrumentation)
+    "out/scrabble-nwl23-shadow-timing.bin",
+    "out/scrabble-csw24-shadow-timing.bin",
+    "out/scrabble-nwl23-noshadow-timing.bin",
+    "out/scrabble-csw24-noshadow-timing.bin",
+    "build/nwl23-shadow-timing/scrabble.elf",
+    "build/csw24-shadow-timing/scrabble.elf",
+    "build/nwl23-noshadow-timing/scrabble.elf",
+    "build/csw24-noshadow-timing/scrabble.elf",
+    # KLV data files
+    "data/NWL23.klv16",
+    "data/CSW24.klv16",
 ])
 
 filegroup(
