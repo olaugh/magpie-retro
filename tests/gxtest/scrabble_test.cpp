@@ -36,8 +36,9 @@ struct ExpectedResult {
     uint32_t noshadow_frames;
 };
 
-// Expected results for seeds 0-9 (scores must match between shadow/noshadow)
-// Frame counts reflect score-in-eighths, MULT_SMALL, word_multiplier switch, and cache_row optimizations
+// Expected results for seeds 0-9 (scores must match between shadow/noshadow).
+// Frame counts reflect the latest optimizations and are asserted to guard
+// against unexpected performance regressions.
 constexpr ExpectedResult NWL23_EXPECTED[NUM_SEEDS] = {
     {431, 467, 13877, 13916},  // Seed 0
     {456, 463,  8586,  8746},  // Seed 1
