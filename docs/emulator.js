@@ -81,9 +81,12 @@ function loadEmulator(romKey) {
     const rom = ROMS[romKey];
     if (!rom) return;
 
+    // Resolve ROM path relative to current page URL for GitHub Pages compatibility
+    const romUrl = new URL(rom.file, window.location.href).href;
+
     window.EJS_player = '#game';
     window.EJS_core = 'genesis_plus_gx';
-    window.EJS_gameUrl = rom.file;
+    window.EJS_gameUrl = romUrl;
     window.EJS_gameName = rom.name;
     window.EJS_color = '#22C55E';
     window.EJS_startOnLoaded = true;
