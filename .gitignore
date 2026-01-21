@@ -43,3 +43,7 @@ test_klv
 
 # ROM files (add your ROMs locally, don't commit)
 docs/play/roms/*.bin
+
+# Generated docs (built by CI)
+docs/timing_report.html
+docs/disassembly/

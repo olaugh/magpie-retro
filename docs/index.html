@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>magpie-retro - Scrabble AI for Sega Genesis</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .tagline {
+            font-size: 0.95rem;
+            color: #a5b4fc;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Emulator Section */
+        .emulator-section {
+            margin-bottom: 40px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .controls label {
+            font-weight: 600;
+            color: #ccc;
+        }
+
+        #rom-select {
+            padding: 10px 15px;
+            font-size: 1rem;
+            border: 2px solid #444;
+            border-radius: 8px;
+            background: #2a2a4a;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        #rom-select:hover, #rom-select:focus {
+            border-color: #6366f1;
+            outline: none;
+        }
+
+        .button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .load-button {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+        }
+
+        .load-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+
+        .turbo-button {
+            border: 2px solid #444;
+            background: #2a2a4a;
+            color: #fff;
+        }
+
+        .turbo-button:hover {
+            border-color: #f59e0b;
+        }
+
+        .turbo-button.active {
+            background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+            border-color: #f59e0b;
+        }
+
+        .fps-display {
+            padding: 10px 15px;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: #4ade80;
+        }
+
+        #emulator-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        #game {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        .controls-help {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        .controls-help code {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        /* Documentation Section */
+        .docs-section {
+            margin-bottom: 40px;
+        }
+
+        .docs-section h2 {
+            font-size: 1.5rem;
+            color: #fff;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+        }
+
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .doc-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .doc-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .doc-card h3 {
+            font-size: 1.1rem;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .doc-card h3 a {
+            color: #a5b4fc;
+            text-decoration: none;
+        }
+
+        .doc-card h3 a:hover {
+            text-decoration: underline;
+        }
+
+        .doc-card p {
+            font-size: 0.9rem;
+            color: #999;
+            margin-bottom: 12px;
+        }
+
+        .doc-card .stats {
+            font-size: 0.85rem;
+            color: #4ade80;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px 0;
+            color: #666;
+            font-size: 0.9rem;
+            border-top: 1px solid #333;
+        }
+
+        footer a {
+            color: #8b5cf6;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .author {
+            margin-bottom: 15px;
+            color: #888;
+        }
+
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            #rom-select, .button {
+                width: 100%;
+            }
+
+            .doc-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>magpie-retro</h1>
+            <p class="subtitle">Scrabble AI for Sega Genesis</p>
+            <p class="tagline">A fast Scrabble AI running on 16-bit hardware (7.67MHz 68000) with GADDAG and shadow-playing.</p>
+        </header>
+
+        <section class="emulator-section">
+            <div class="controls">
+                <label for="rom-select">ROM:</label>
+                <select id="rom-select">
+                    <option value="nwl23" selected>NWL23 (North American)</option>
+                    <option value="csw24">CSW24 (International)</option>
+                </select>
+                <button id="load-btn" class="button load-button">Load Game</button>
+                <button id="turbo-btn" class="button turbo-button">Turbo: OFF</button>
+                <span id="fps-display" class="fps-display">FPS: --</span>
+            </div>
+
+            <div id="emulator-container">
+                <div id="game"></div>
+            </div>
+
+            <p class="controls-help">
+                <code>Arrows</code> move &bull; <code>Z</code> A &bull; <code>X</code> B &bull; <code>C</code> C &bull; <code>Enter</code> Start &bull; <code>Space</code> Toggle Turbo
+            </p>
+            <p class="controls-help" style="margin-top: 10px; color: #666;">
+                Currently plays AI vs AI games automatically. Press any button to advance to the next game. Interactive play is coming soon.
+            </p>
+        </section>
+
+        <section class="docs-section">
+            <h2>Performance Analysis</h2>
+            <div class="doc-grid">
+                <div class="doc-card">
+                    <h3><a href="timing_report.html">Timing Report</a></h3>
+                    <p>Comparison of Shadow, NoShadow, and Hybrid algorithms across NWL23 and CSW24 lexicons.</p>
+                    <div class="stats">Frame counts, cycle analysis, move statistics</div>
+                </div>
+
+                <div class="doc-card">
+                    <h3><a href="disassembly/">Disassembly Explorer</a></h3>
+                    <p>Interactive C/assembly listing with per-instruction cycle profiling from 68000 emulation.</p>
+                    <div class="stats">CSW24 Shadow build with profile data</div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p class="author">By John O'Laughlin</p>
+            <p>
+                <a href="https://github.com/olaugh/magpie-retro" target="_blank" rel="noopener">magpie-retro</a> &bull;
+                <a href="https://github.com/andy-k/magpie" target="_blank" rel="noopener">MAGPIE</a> &bull;
+                Powered by <a href="https://emulatorjs.org/" target="_blank" rel="noopener">EmulatorJS</a>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // ROM configuration - hybrid algorithm ROMs
+        const ROMS = {
+            nwl23: { name: 'NWL23 (North American)', file: 'play/roms/nwl23-hybrid.bin' },
+            csw24: { name: 'CSW24 (International)', file: 'play/roms/csw24-hybrid.bin' }
+        };
+
+        // State
+        let turboEnabled = false;
+        let fpsInterval = null;
+
+        // Get ROM from URL or default
+        function getSelectedRom() {
+            const params = new URLSearchParams(window.location.search);
+            const rom = params.get('rom');
+            return (rom && ROMS[rom]) ? rom : 'nwl23';
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const romSelect = document.getElementById('rom-select');
+            const loadBtn = document.getElementById('load-btn');
+            const turboBtn = document.getElementById('turbo-btn');
+            const selectedRom = getSelectedRom();
+
+            romSelect.value = selectedRom;
+
+            // Load button
+            loadBtn.addEventListener('click', function() {
+                const newRom = romSelect.value;
+                const currentRom = getSelectedRom();
+                if (newRom !== currentRom || !window.EJS_emulator) {
+                    window.location.href = `?rom=${newRom}`;
+                }
+            });
+
+            // Turbo toggle
+            function toggleTurbo() {
+                turboEnabled = !turboEnabled;
+                turboBtn.textContent = turboEnabled ? 'Turbo: ON' : 'Turbo: OFF';
+                turboBtn.classList.toggle('active', turboEnabled);
+                if (window.EJS_emulator && window.EJS_emulator.gameManager) {
+                    window.EJS_emulator.gameManager.setFastForwardRatio(0);
+                    window.EJS_emulator.gameManager.toggleFastForward(turboEnabled ? 1 : 0);
+                }
+            }
+
+            turboBtn.addEventListener('click', toggleTurbo);
+
+            document.addEventListener('keydown', function(e) {
+                if (e.code === 'Space' && e.target === document.body) {
+                    e.preventDefault();
+                    toggleTurbo();
+                }
+            });
+
+            // Load emulator
+            loadEmulator(selectedRom);
+
+            // FPS counter
+            const fpsDisplay = document.getElementById('fps-display');
+            let lastFrameNum = 0;
+            let lastTime = performance.now();
+
+            fpsInterval = setInterval(function() {
+                if (window.EJS_emulator && window.EJS_emulator.gameManager &&
+                    typeof window.EJS_emulator.gameManager.getFrameNum === 'function') {
+                    try {
+                        const frameNum = window.EJS_emulator.gameManager.getFrameNum();
+                        const now = performance.now();
+                        const elapsed = (now - lastTime) / 1000;
+                        if (elapsed >= 0.5 && lastFrameNum > 0) {
+                            const fps = (frameNum - lastFrameNum) / elapsed;
+                            fpsDisplay.textContent = 'FPS: ' + Math.round(fps);
+                        }
+                        lastFrameNum = frameNum;
+                        lastTime = now;
+                    } catch (e) {}
+                }
+            }, 500);
+        });
+
+        function loadEmulator(romKey) {
+            const rom = ROMS[romKey];
+            if (!rom) return;
+
+            window.EJS_player = '#game';
+            window.EJS_core = 'genesis_plus_gx';
+            window.EJS_gameUrl = rom.file;
+            window.EJS_gameName = rom.name;
+            window.EJS_color = '#6366f1';
+            window.EJS_startOnLoaded = true;
+            window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+            window.EJS_fastForwardRatio = 0;
+
+            const script = document.createElement('script');
+            script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
+            document.body.appendChild(script);
+        }
+    </script>
+</body>
+</html>

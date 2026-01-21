@@ -1,12 +1,12 @@
-ROM FILES PLACEHOLDER
-=====================
+ROM FILES
+=========
 
-Place your Shadow Scrabble ROM binaries in this directory with the following names:
+Place hybrid algorithm ROM binaries in this directory:
 
-  shadow-nwl.bin  -  Shadow NWL (North American dictionary)
-  shadow-csw.bin  -  Shadow CSW (International dictionary)
+  nwl23-hybrid.bin  -  NWL23 (North American dictionary)
+  csw24-hybrid.bin  -  CSW24 (International dictionary)
 
-The emulator expects these exact filenames. The files should be raw Genesis/Mega Drive
-ROM binaries (typically .bin or .md format, but rename to .bin).
+Build with: make nwl23-hybrid csw24-hybrid
+Then copy from out/ directory.
 
-Note: ROM files are not included in version control due to size and licensing.
+Note: ROM files are excluded from version control via .gitignore.
