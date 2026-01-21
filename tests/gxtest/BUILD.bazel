@@ -1,5 +1,7 @@
 # Scrabble Genesis ROM Tests
 
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["scrabble_symbols.h"])
