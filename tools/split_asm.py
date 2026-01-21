@@ -17,6 +17,7 @@ import re
 import sys
 import html
 import json
+import textwrap
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -178,6 +179,8 @@ def parse_objdump(input_file: str) -> dict[str, list[Function]]:
                 if pending_source_lines:
                     # Use the most recent source reference
                     src_file, src_line, src_text = pending_source_lines[-1]
+                    # Dedent to remove common leading whitespace while preserving relative indent
+                    src_text = textwrap.dedent(src_text)
                     current_source_block = SourceBlock(
                         file_path=src_file,
                         line_number=src_line,
@@ -202,20 +205,19 @@ def parse_objdump(input_file: str) -> dict[str, list[Function]]:
 
             # Source code line - any line not matched by patterns above is source text
             # (indented C source, comments, etc.)
-            # Note: objdump indents source with spaces, so we strip and preserve content
+            # Preserve the line as-is to maintain indentation; we'll dedent later
             if current_func and line.strip():
-                stripped = line.strip()
                 # If we have a pending source reference, append this text to it
                 if pending_source_lines:
                     file_path, line_num, existing_text = pending_source_lines[-1]
                     if existing_text:
                         # Append to existing (multiline source)
-                        pending_source_lines[-1] = (file_path, line_num, existing_text + '\n' + stripped)
+                        pending_source_lines[-1] = (file_path, line_num, existing_text + '\n' + line)
                     else:
-                        pending_source_lines[-1] = (file_path, line_num, stripped)
+                        pending_source_lines[-1] = (file_path, line_num, line)
                 elif current_source_block and not current_source_block.source_text:
                     # No pending, but current block has no text - use this
-                    current_source_block.source_text = stripped
+                    current_source_block.source_text = line
 
     # Don't forget last function
     if current_func:
