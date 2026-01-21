@@ -107,6 +107,22 @@ extern void *memset(void *s, int c, unsigned long n);
 extern void *memcpy(void *dest, const void *src, unsigned long n);
 
 /*
+ * COPY_14_BYTES: Fast copy for 14-byte arrays (RACK_SIZE * sizeof(int16_t)).
+ * On 68000, uses explicit long-word copies to avoid memcpy call overhead.
+ * On other platforms, uses memcpy which compilers optimize well.
+ */
+#ifdef __m68k__
+#define COPY_14_BYTES(dst, src) do { \
+    uint32_t *_d = (uint32_t *)(dst); \
+    const uint32_t *_s = (const uint32_t *)(src); \
+    _d[0] = _s[0]; _d[1] = _s[1]; _d[2] = _s[2]; \
+    ((uint16_t *)(dst))[6] = ((const uint16_t *)(src))[6]; \
+} while (0)
+#else
+#define COPY_14_BYTES(dst, src) memcpy((dst), (src), 14)
+#endif
+
+/*
  * UnrestrictedMultiplier: tracks multipliers at positions where
  * any tile could be placed during shadow play
  */
@@ -604,30 +620,13 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     gen->rack_shadow_right_copy = gen->rack;
     uint32_t orig_rack_bits = gen->rack_bits;
 
-    /* Save descending tile scores using struct-level copy.
-     * Use explicit long-word copies to avoid memcpy call overhead. */
-    {
-        uint32_t *dst = (uint32_t *)gen->descending_tile_scores_copy;
-        const uint32_t *src = (const uint32_t *)gen->descending_tile_scores;
-        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-        /* Last element (14 bytes = 3 longs + 1 word) */
-        gen->descending_tile_scores_copy[6] = gen->descending_tile_scores[6];
-    }
+    /* Save descending tile scores using struct-level copy */
+    COPY_14_BYTES(gen->descending_tile_scores_copy, gen->descending_tile_scores);
 
     /* Save unrestricted multiplier state using struct-level copies */
     uint8_t orig_num_unrestricted = gen->num_unrestricted_multipliers;
-    {
-        uint32_t *dst = (uint32_t *)gen->desc_xw_muls_copy;
-        const uint32_t *src = (const uint32_t *)gen->descending_cross_word_multipliers;
-        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-        gen->desc_xw_muls_copy[6] = gen->descending_cross_word_multipliers[6];
-    }
-    {
-        uint32_t *dst = (uint32_t *)gen->desc_eff_letter_muls_copy;
-        const uint32_t *src = (const uint32_t *)gen->descending_effective_letter_multipliers;
-        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-        gen->desc_eff_letter_muls_copy[6] = gen->descending_effective_letter_multipliers[6];
-    }
+    COPY_14_BYTES(gen->desc_xw_muls_copy, gen->descending_cross_word_multipliers);
+    COPY_14_BYTES(gen->desc_eff_letter_muls_copy, gen->descending_effective_letter_multipliers);
 
     int orig_right_col = gen->shadow_right_col;
     int orig_tiles_played = gen->tiles_played;
@@ -738,30 +737,15 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         /* Restore rack using struct assignment */
         gen->rack = gen->rack_shadow_right_copy;
         gen->rack_bits = orig_rack_bits;
-        /* Restore tile scores using long-word copies */
-        {
-            uint32_t *dst = (uint32_t *)gen->descending_tile_scores;
-            const uint32_t *src = (const uint32_t *)gen->descending_tile_scores_copy;
-            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-            gen->descending_tile_scores[6] = gen->descending_tile_scores_copy[6];
-        }
+        /* Restore tile scores */
+        COPY_14_BYTES(gen->descending_tile_scores, gen->descending_tile_scores_copy);
     }
 
     if (changed_multipliers) {
         gen->num_unrestricted_multipliers = orig_num_unrestricted;
-        /* Restore multiplier arrays using long-word copies */
-        {
-            uint32_t *dst = (uint32_t *)gen->descending_cross_word_multipliers;
-            const uint32_t *src = (const uint32_t *)gen->desc_xw_muls_copy;
-            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-            gen->descending_cross_word_multipliers[6] = gen->desc_xw_muls_copy[6];
-        }
-        {
-            uint32_t *dst = (uint32_t *)gen->descending_effective_letter_multipliers;
-            const uint32_t *src = (const uint32_t *)gen->desc_eff_letter_muls_copy;
-            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
-            gen->descending_effective_letter_multipliers[6] = gen->desc_eff_letter_muls_copy[6];
-        }
+        /* Restore multiplier arrays */
+        COPY_14_BYTES(gen->descending_cross_word_multipliers, gen->desc_xw_muls_copy);
+        COPY_14_BYTES(gen->descending_effective_letter_multipliers, gen->desc_eff_letter_muls_copy);
     }
 
     gen->shadow_right_col = orig_right_col;

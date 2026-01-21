@@ -39,16 +39,16 @@ struct ExpectedResult {
 // Expected results for seeds 0-9 (scores must match between shadow/noshadow)
 // Frame counts reflect score-in-eighths, MULT_SMALL, word_multiplier switch, and cache_row optimizations
 constexpr ExpectedResult NWL23_EXPECTED[NUM_SEEDS] = {
-    {431, 467, 13875, 13916},  // Seed 0
-    {456, 463,  8584,  8746},  // Seed 1
-    {620, 344,  5524,  5767},  // Seed 2
-    {433, 411,  9665,  9397},  // Seed 3
-    {415, 451,  6409,  5670},  // Seed 4
-    {361, 458, 11354, 12381},  // Seed 5
-    {365, 506,  9660,  9504},  // Seed 6
-    {522, 440, 12080, 12060},  // Seed 7
-    {569, 308,  8716, 14249},  // Seed 8
-    {406, 483, 11466, 11487},  // Seed 9
+    {431, 467, 13877, 13916},  // Seed 0
+    {456, 463,  8586,  8746},  // Seed 1
+    {620, 344,  5526,  5767},  // Seed 2
+    {433, 411,  9667,  9397},  // Seed 3
+    {415, 451,  6411,  5670},  // Seed 4
+    {361, 458, 11356, 12381},  // Seed 5
+    {365, 506,  9662,  9504},  // Seed 6
+    {522, 440, 12081, 12060},  // Seed 7
+    {569, 308,  8717, 14249},  // Seed 8
+    {406, 483, 11468, 11487},  // Seed 9
 };
 
 // ---------------------------------------------------------------------------
