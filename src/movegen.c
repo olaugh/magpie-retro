@@ -1171,11 +1171,11 @@ static void gen_shadow(MoveGenState *gen) {
                  * same as actual move generation. */
                 if (!is_anchor(gen, col)) continue;
 
-                /* Save state that shadow_play_for_anchor may modify */
-                Rack saved_rack;
-                memcpy(&saved_rack, &gen->rack, sizeof(Rack));
+                /* Save state that shadow_play_for_anchor may modify.
+                 * Use struct assignment and COPY_14_BYTES to avoid memcpy overhead. */
+                Rack saved_rack = gen->rack;
                 Equity saved_scores[RACK_SIZE];
-                memcpy(saved_scores, gen->descending_tile_scores, sizeof(saved_scores));
+                COPY_14_BYTES(saved_scores, gen->descending_tile_scores);
 
 #if USE_SHADOW_DEBUG
                 /* Check rack state before processing anchor */
@@ -1196,8 +1196,8 @@ static void gen_shadow(MoveGenState *gen) {
                 shadow_play_for_anchor(gen, col);
 
                 /* Restore state */
-                memcpy(&gen->rack, &saved_rack, sizeof(Rack));
-                memcpy(gen->descending_tile_scores, saved_scores, sizeof(saved_scores));
+                gen->rack = saved_rack;
+                COPY_14_BYTES(gen->descending_tile_scores, saved_scores);
 
 #if USE_SHADOW_DEBUG
                 if (gen->rack.total != initial_rack_total) {
