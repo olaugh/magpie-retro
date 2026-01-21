@@ -51,6 +51,9 @@ cc_test(
         "//:build/nwl23-noshadow/scrabble.elf",
         "//:build/csw24-shadow/scrabble.elf",
         "//:build/csw24-noshadow/scrabble.elf",
+        # Debug ELFs with DWARF symbols (for address histogram export)
+        "//:build/nwl23-shadow-debug/scrabble.elf",
+        "//:build/csw24-shadow-debug/scrabble.elf",
     ],
     defines = [
         'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',

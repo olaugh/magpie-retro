@@ -30,6 +30,7 @@ class AsmLine:
     hex_bytes: str
     instruction: str
     raw_line: str
+    cycles: int = 0  # CPU cycles spent at this address (from profiler)
 
 
 @dataclass
@@ -57,6 +58,42 @@ class Function:
     address: int
     source_blocks: list[SourceBlock] = field(default_factory=list)
     asm_blocks: list[AsmBlock] = field(default_factory=list)
+
+
+@dataclass
+class ProfileData:
+    """Profiling data loaded from JSON."""
+    sample_rate: int
+    total_cycles: int
+    address_cycles: dict[int, int]  # address -> cycles
+
+
+def load_profile(path: str) -> Optional[ProfileData]:
+    """Load profile data from JSON file."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        address_cycles = {
+            int(addr, 16): cycles
+            for addr, cycles in data.get('addresses', {}).items()
+        }
+        return ProfileData(
+            sample_rate=data.get('sample_rate', 1),
+            total_cycles=data.get('total_cycles', 0),
+            address_cycles=address_cycles
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        print(f"Warning: Failed to load profile {path}: {e}", file=sys.stderr)
+        return None
+
+
+def annotate_with_profile(files: dict[str, list[Function]], profile: ProfileData) -> None:
+    """Annotate AsmLines with cycle counts from profile data."""
+    for functions in files.values():
+        for func in functions:
+            for sb in func.source_blocks:
+                for asm in sb.asm_lines:
+                    asm.cycles = profile.address_cycles.get(asm.address, 0)
 
 
 def normalize_path(path: str) -> str:
@@ -224,7 +261,8 @@ def parse_objdump(input_file: str) -> dict[str, list[Function]]:
     return dict(files)
 
 
-def generate_html(filename: str, functions: list[Function], all_files: list[str], binary_name: str) -> str:
+def generate_html(filename: str, functions: list[Function], all_files: list[str], binary_name: str,
+                  profile: Optional[ProfileData] = None) -> str:
     """Generate HTML with dual-view support."""
 
     # Build sidebar
@@ -248,7 +286,8 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
                 asm_data.append({
                     'addr': f'{asm.address:08x}',
                     'hex': asm.hex_bytes,
-                    'instr': asm.instruction
+                    'instr': asm.instruction,
+                    'cycles': asm.cycles
                 })
             blocks.append({
                 'file': sb.file_path,
@@ -263,6 +302,10 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
         })
 
     display_name = get_display_name(filename) if filename != "_unknown_" else "(unknown source)"
+
+    # Profile data for JavaScript
+    has_profile_json = 'true' if profile else 'false'
+    total_cycles_json = str(profile.total_cycles) if profile else '0'
 
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -475,9 +518,12 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
             line-height: 1.3;
             cursor: pointer;
             display: grid;
-            grid-template-columns: 16px 50px 1fr;
+            grid-template-columns: 16px 150px 1fr;
             align-items: start;
             border-bottom: 1px solid var(--border-row);
+        }}
+        .source-line.has-profile {{
+            grid-template-columns: 16px 70px 150px 1fr;
         }}
         .source-line:hover {{ background: #0a0a0a; }}
         .source-line.selected {{
@@ -491,6 +537,18 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
             text-align: center;
             font-size: 9px;
             padding-top: 1px;
+        }}
+        .source-line .cycles {{
+            color: var(--text-muted);
+            text-align: right;
+            padding-right: 8px;
+        }}
+        .source-line .cycles.hot {{
+            color: #FF6B6B;
+            font-weight: 600;
+        }}
+        .source-line .cycles.warm {{
+            color: #FFB347;
         }}
         .source-line .line-num {{
             color: var(--text-dim);
@@ -509,13 +567,16 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
         /* === Assembly Grid Layout === */
         .asm-line {{
             display: grid;
-            grid-template-columns: 80px 100px 1fr;
+            grid-template-columns: 70px 80px 1fr;
             padding: 1px 0;
             font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
             font-size: 11px;
             line-height: 1.3;
             border-bottom: 1px solid var(--border-row);
             background: var(--bg-app);
+        }}
+        .asm-line.has-profile {{
+            grid-template-columns: 70px 70px 80px 1fr;
         }}
         .asm-line:hover {{ background: #252525; }}
         .asm-line.selected {{
@@ -527,11 +588,23 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
         .asm-line .addr {{
             color: var(--text-dim);
             text-align: right;
-            padding-right: 12px;
+            padding-right: 8px;
+        }}
+        .asm-line .cycles {{
+            color: var(--text-muted);
+            text-align: right;
+            padding-right: 8px;
+        }}
+        .asm-line .cycles.hot {{
+            color: #FF6B6B;
+            font-weight: 600;
+        }}
+        .asm-line .cycles.warm {{
+            color: #FFB347;
         }}
         .asm-line .hex {{
             color: var(--text-dim);
-            padding-right: 12px;
+            padding-right: 8px;
         }}
         .asm-line .instr {{
             color: var(--text-muted);
@@ -590,6 +663,8 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
     </div>
     <script>
 const FUNCTIONS = {json.dumps(functions_json)};
+const HAS_PROFILE = {has_profile_json};
+const TOTAL_CYCLES = {total_cycles_json};
 let currentView = 'source';
 let expandAll = true;
 
@@ -599,36 +674,135 @@ function escapeHtml(text) {{
     return div.innerHTML;
 }}
 
+function formatCycles(n) {{
+    if (n === 0) return '';
+    if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+    return n.toString();
+}}
+
+function getCycleClass(cycles) {{
+    if (!HAS_PROFILE || cycles === 0) return '';
+    const pct = cycles / TOTAL_CYCLES;
+    if (pct >= 0.01) return 'hot';    // >= 1% of total
+    if (pct >= 0.001) return 'warm';  // >= 0.1% of total
+    return '';
+}}
+
 function renderSourceView() {{
     let html = '';
     for (const func of FUNCTIONS) {{
         html += `<div class="function">`;
         html += `<div class="func-header"><span class="addr">${{func.addr}}</span>${{escapeHtml(func.name)}}</div>`;
 
-        for (let i = 0; i < func.blocks.length; i++) {{
-            const block = func.blocks[i];
-            const blockId = `${{func.addr}}-${{i}}`;
+        // Group blocks by source line number and merge assembly
+        // This handles compiler instruction reordering (GCC -O2)
+        const lineMap = new Map();  // line -> {{src, file, asm: []}}
+        const noLineAsm = [];       // assembly without source attribution
+
+        for (const block of func.blocks) {{
+            if (block.line > 0) {{
+                const key = block.line;
+                if (!lineMap.has(key)) {{
+                    lineMap.set(key, {{
+                        src: block.src,
+                        file: block.file,
+                        line: block.line,
+                        asm: []
+                    }});
+                }}
+                // Merge assembly from duplicate source lines
+                for (const a of block.asm) {{
+                    lineMap.get(key).asm.push(a);
+                }}
+            }} else {{
+                // No source line - collect separately
+                for (const a of block.asm) {{
+                    noLineAsm.push(a);
+                }}
+            }}
+        }}
+
+        // Sort by line number
+        const sortedBlocks = Array.from(lineMap.values()).sort((a, b) => a.line - b.line);
+
+        // Sort assembly within each block by address (machine order)
+        for (const block of sortedBlocks) {{
+            block.asm.sort((a, b) => {{
+                const addrA = parseInt(a.addr, 16);
+                const addrB = parseInt(b.addr, 16);
+                return addrA - addrB;
+            }});
+        }}
+
+        // Render assembly without source attribution first (e.g., function prologue)
+        if (noLineAsm.length > 0) {{
+            const blockId = `${{func.addr}}-nosrc`;
+            const expanded = expandAll ? '' : 'collapsed';
+            const blockCycles = noLineAsm.reduce((sum, a) => sum + (a.cycles || 0), 0);
+            const profileClass = HAS_PROFILE ? 'has-profile' : '';
+            const cycleClass = getCycleClass(blockCycles);
+
+            html += `<div class="block">`;
+            html += `<div class="source-line ${{profileClass}}" onclick="toggleBlock('${{blockId}}')" tabindex="0">`;
+            html += `<span class="toggle">${{expandAll ? '&#9662;' : '&#9656;'}}</span>`;
+            if (HAS_PROFILE) {{
+                html += `<span class="cycles ${{cycleClass}}">${{formatCycles(blockCycles)}}</span>`;
+            }}
+            html += `<span class="line-num"></span>`;
+            html += `<span class="code" style="color: var(--text-muted); font-style: italic;">(no source)</span>`;
+            html += `</div>`;
+            html += `<div class="asm-group ${{expanded}}" id="${{blockId}}">`;
+            for (const asm of noLineAsm) {{
+                const cycleClass = getCycleClass(asm.cycles || 0);
+                html += `<div class="asm-line ${{profileClass}}" tabindex="0">`;
+                html += `<span class="addr">${{asm.addr}}</span>`;
+                if (HAS_PROFILE) {{
+                    html += `<span class="cycles ${{cycleClass}}">${{formatCycles(asm.cycles || 0)}}</span>`;
+                }}
+                html += `<span class="hex">${{asm.hex}}</span>`;
+                html += `<span class="instr">${{escapeHtml(asm.instr)}}</span>`;
+                html += `</div>`;
+            }}
+            html += `</div></div>`;
+        }}
+
+        // Render sorted source blocks
+        for (let i = 0; i < sortedBlocks.length; i++) {{
+            const block = sortedBlocks[i];
+            const blockId = `${{func.addr}}-${{block.line}}`;
             const hasAsm = block.asm.length > 0;
             const expanded = expandAll ? '' : 'collapsed';
+
+            // Calculate total cycles for this source block
+            const blockCycles = block.asm.reduce((sum, a) => sum + (a.cycles || 0), 0);
 
             html += `<div class="block">`;
 
             // Source line (section header style)
-            if (block.src || block.line > 0) {{
-                const toggleIcon = hasAsm ? (expandAll ? '&#9662;' : '&#9656;') : '';
-                html += `<div class="source-line" onclick="toggleBlock('${{blockId}}')" tabindex="0">`;
-                html += `<span class="toggle">${{toggleIcon}}</span>`;
-                html += `<span class="line-num">${{block.line || ''}}</span>`;
-                html += `<span class="code">${{escapeHtml(block.src || '')}}</span>`;
-                html += `</div>`;
+            const toggleIcon = hasAsm ? (expandAll ? '&#9662;' : '&#9656;') : '';
+            const profileClass = HAS_PROFILE ? 'has-profile' : '';
+            const cycleClass = getCycleClass(blockCycles);
+            html += `<div class="source-line ${{profileClass}}" onclick="toggleBlock('${{blockId}}')" tabindex="0">`;
+            html += `<span class="toggle">${{toggleIcon}}</span>`;
+            if (HAS_PROFILE) {{
+                html += `<span class="cycles ${{cycleClass}}">${{formatCycles(blockCycles)}}</span>`;
             }}
+            html += `<span class="line-num">${{block.line}}</span>`;
+            html += `<span class="code">${{escapeHtml(block.src || '')}}</span>`;
+            html += `</div>`;
 
             // Assembly lines (grid layout)
             if (hasAsm) {{
                 html += `<div class="asm-group ${{expanded}}" id="${{blockId}}">`;
                 for (const asm of block.asm) {{
-                    html += `<div class="asm-line" tabindex="0">`;
+                    const cycleClass = getCycleClass(asm.cycles || 0);
+                    html += `<div class="asm-line ${{profileClass}}" tabindex="0">`;
                     html += `<span class="addr">${{asm.addr}}</span>`;
+                    if (HAS_PROFILE) {{
+                        html += `<span class="cycles ${{cycleClass}}">${{formatCycles(asm.cycles || 0)}}</span>`;
+                    }}
                     html += `<span class="hex">${{asm.hex}}</span>`;
                     html += `<span class="instr">${{escapeHtml(asm.instr)}}</span>`;
                     html += `</div>`;
@@ -661,8 +835,13 @@ function renderMachineView() {{
             if (block.asm.length > 0) {{
                 html += `<div class="asm-block" onclick="toggleBlock('${{blockId}}')">`;
                 for (const asm of block.asm) {{
-                    html += `<div class="asm-line">`;
+                    const profileClass = HAS_PROFILE ? 'has-profile' : '';
+                    const cycleClass = getCycleClass(asm.cycles || 0);
+                    html += `<div class="asm-line ${{profileClass}}">`;
                     html += `<span class="addr">${{asm.addr}}</span>`;
+                    if (HAS_PROFILE) {{
+                        html += `<span class="cycles ${{cycleClass}}">${{formatCycles(asm.cycles || 0)}}</span>`;
+                    }}
                     html += `<span class="hex">${{asm.hex}}</span>`;
                     html += `<span class="instr">${{escapeHtml(asm.instr)}}</span>`;
                     html += `</div>`;
@@ -672,10 +851,19 @@ function renderMachineView() {{
 
             // Source context
             if (hasSrc) {{
+                const blockCycles = block.asm.reduce((sum, a) => sum + (a.cycles || 0), 0);
+                const profileClass = HAS_PROFILE ? 'has-profile' : '';
+                const cycleClass = getCycleClass(blockCycles);
+                // Only show first line of source in machine view (multi-line blocks look messy)
+                const firstLine = (block.src || '').split('\\n')[0];
                 html += `<div class="source-group ${{expanded}}" id="${{blockId}}">`;
-                html += `<div class="source-line">`;
+                html += `<div class="source-line ${{profileClass}}">`;
+                html += `<span class="toggle"></span>`;  // Empty toggle to match grid columns
+                if (HAS_PROFILE) {{
+                    html += `<span class="cycles ${{cycleClass}}">${{formatCycles(blockCycles)}}</span>`;
+                }}
                 html += `<span class="line-num">${{block.file}}:${{block.line}}</span>`;
-                html += `<span class="code">${{escapeHtml(block.src || '')}}</span>`;
+                html += `<span class="code">${{escapeHtml(firstLine)}}</span>`;
                 html += `</div>`;
                 html += `</div>`;
             }}
@@ -927,12 +1115,15 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <input.lst> <output_dir>", file=sys.stderr)
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description='Generate browsable disassembly HTML from objdump output')
+    parser.add_argument('input_lst', help='Input .lst file from objdump -d -S')
+    parser.add_argument('output_dir', help='Output directory for HTML files')
+    parser.add_argument('--profile', '-p', help='Profile JSON file with per-address cycle counts')
+    args = parser.parse_args()
 
-    input_file = sys.argv[1]
-    output_dir = sys.argv[2]
+    input_file = args.input_lst
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"Parsing {input_file}...", file=sys.stderr)
@@ -950,6 +1141,17 @@ def main():
 
     print(f"Found {len(files)} source files", file=sys.stderr)
 
+    # Load profile data if provided
+    profile: Optional[ProfileData] = None
+    if args.profile:
+        print(f"Loading profile from {args.profile}...", file=sys.stderr)
+        profile = load_profile(args.profile)
+        if profile:
+            print(f"  {len(profile.address_cycles)} addresses, {profile.total_cycles:,} total cycles", file=sys.stderr)
+            annotate_with_profile(files, profile)
+        else:
+            print(f"  Warning: Failed to load profile", file=sys.stderr)
+
     binary_name = os.path.basename(input_file).replace('.lst', '.elf')
     all_files = list(files.keys())
 
@@ -960,7 +1162,7 @@ def main():
             output_name = get_display_name(filepath) + ".html"
 
         output_path = os.path.join(output_dir, output_name)
-        html_content = generate_html(filepath, functions, all_files, binary_name)
+        html_content = generate_html(filepath, functions, all_files, binary_name, profile)
 
         with open(output_path, 'w') as f:
             f.write(html_content)

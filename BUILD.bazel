@@ -92,6 +92,7 @@ disassembly_site(
 disassembly_site(
     name = "disasm_csw24_shadow",
     binary = "build/csw24-shadow-debug/scrabble.elf",
+    profile = "profiles/csw24-shadow.profile.json",
     srcs = [":genesis_sources"],
 )
 

@@ -41,8 +41,13 @@ def _disassembly_site_impl(ctx):
     # Collect all source files
     srcs = ctx.files.srcs
 
-    # Create inputs list: binary + all source files + splitter script
+    # Get optional profile file
+    profile = ctx.file.profile
+
+    # Create inputs list: binary + all source files + splitter script + profile
     inputs = [binary, splitter] + srcs
+    if profile:
+        inputs.append(profile)
 
     # Build the command
     # 1. Run objdump to generate the raw listing
@@ -87,7 +92,7 @@ LST_FILE="$WORK_DIR/dump.lst"
 }}
 
 # Run the splitter script to generate HTML
-python3 {splitter} "$LST_FILE" {output_dir}
+python3 {splitter} "$LST_FILE" {output_dir} {profile_arg}
 
 # Cleanup
 rm -rf "$WORK_DIR"
@@ -96,6 +101,7 @@ rm -rf "$WORK_DIR"
         binary = binary.path,
         splitter = splitter.path,
         output_dir = output_dir.path,
+        profile_arg = "--profile " + profile.path if profile else "",
     )
 
     ctx.actions.run_shell(
@@ -121,6 +127,11 @@ disassembly_site = rule(
         "srcs": attr.label_list(
             allow_files = True,
             doc = "Source files to include for mixed C/assembly output.",
+        ),
+        "profile": attr.label(
+            allow_single_file = [".json"],
+            mandatory = False,
+            doc = "Optional profile JSON file with per-address cycle counts for timing display.",
         ),
         "objdump": attr.string(
             default = "m68k-elf-objdump",
