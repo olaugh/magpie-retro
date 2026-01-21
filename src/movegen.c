@@ -43,6 +43,12 @@
 #define DEBUG_ASSERT(cond) ({ if (!(cond)) *(volatile int *)0xDEAD = 0; (void)0; })
 #endif
 
+/* Row caching: on ARM64 this helps L1 cache, on 68000 it's overhead.
+ * Set to 0 to use direct board access instead of copying. */
+#ifndef USE_ROW_CACHE
+#define USE_ROW_CACHE 1
+#endif
+
 /* Timing instrumentation for profiling */
 #ifndef USE_TIMING
 #define USE_TIMING 0
@@ -101,6 +107,22 @@ extern void *memset(void *s, int c, unsigned long n);
 extern void *memcpy(void *dest, const void *src, unsigned long n);
 
 /*
+ * COPY_14_BYTES: Fast copy for 14-byte arrays (RACK_SIZE * sizeof(int16_t)).
+ * On 68000, uses explicit long-word copies to avoid memcpy call overhead.
+ * On other platforms, uses memcpy which compilers optimize well.
+ */
+#ifdef __m68k__
+#define COPY_14_BYTES(dst, src) do { \
+    uint32_t *_d = (uint32_t *)(dst); \
+    const uint32_t *_s = (const uint32_t *)(src); \
+    _d[0] = _s[0]; _d[1] = _s[1]; _d[2] = _s[2]; \
+    ((uint16_t *)(dst))[6] = ((const uint16_t *)(src))[6]; \
+} while (0)
+#else
+#define COPY_14_BYTES(dst, src) memcpy((dst), (src), 14)
+#endif
+
+/*
  * UnrestrictedMultiplier: tracks multipliers at positions where
  * any tile could be placed during shadow play
  */
@@ -147,13 +169,30 @@ typedef struct {
     LeaveMap leave_map_shadow_right_copy;  /* Save leave map for shadow right */
 
     /* Cache of current row */
+#if USE_ROW_CACHE
     MachineLetter row_letters[BOARD_DIM];
-    uint8_t row_bonuses[BOARD_DIM];
     CrossSet row_cross_sets[BOARD_DIM];
     int16_t row_cross_scores[BOARD_DIM];  /* In eighths (converted from board) */
-    uint8_t row_is_anchor[BOARD_DIM];
     CrossSet row_leftx[BOARD_DIM];    /* Left extension sets for current dir */
     CrossSet row_rightx[BOARD_DIM];   /* Right extension sets for current dir */
+#else
+    /* Pointer-based: point directly into board arrays, no copying */
+    const MachineLetter *row_letters;
+    const CrossSet *row_cross_sets;
+    const int16_t *row_cross_scores;
+    const CrossSet *row_leftx;
+    const CrossSet *row_rightx;
+#endif
+
+#if USE_BONUS_TRANSPOSE
+    /* Pointer-based: point directly into pre-transposed h_bonuses/v_bonuses */
+    const uint8_t *row_bonuses;
+#else
+    /* Array-based: compute transpose in cache_row */
+    uint8_t row_bonuses[BOARD_DIM];
+#endif
+    /* Anchors still need per-column computation */
+    uint8_t row_is_anchor[BOARD_DIM];
 
     /* ===== Shadow algorithm state ===== */
 
@@ -576,21 +615,18 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     Equity orig_perp = gen->shadow_perpendicular_additional_score;
     uint8_t orig_wordmul = gen->shadow_word_multiplier;
 
-    /* Save rack state */
-    Rack rack_copy;
-    memcpy(&rack_copy, &gen->rack, sizeof(Rack));
+    /* Save rack state using struct assignment (avoids memcpy call overhead).
+     * Use struct-level copy to avoid stack allocation. */
+    gen->rack_shadow_right_copy = gen->rack;
     uint32_t orig_rack_bits = gen->rack_bits;
 
-    /* Save descending tile scores */
-    Equity desc_scores_copy[RACK_SIZE];
-    memcpy(desc_scores_copy, gen->descending_tile_scores, sizeof(desc_scores_copy));
+    /* Save descending tile scores using struct-level copy */
+    COPY_14_BYTES(gen->descending_tile_scores_copy, gen->descending_tile_scores);
 
-    /* Save unrestricted multiplier state */
+    /* Save unrestricted multiplier state using struct-level copies */
     uint8_t orig_num_unrestricted = gen->num_unrestricted_multipliers;
-    UnrestrictedMultiplier xw_copy[RACK_SIZE];
-    uint16_t eff_copy[RACK_SIZE];
-    memcpy(xw_copy, gen->descending_cross_word_multipliers, sizeof(xw_copy));
-    memcpy(eff_copy, gen->descending_effective_letter_multipliers, sizeof(eff_copy));
+    COPY_14_BYTES(gen->desc_xw_muls_copy, gen->descending_cross_word_multipliers);
+    COPY_14_BYTES(gen->desc_eff_letter_muls_copy, gen->descending_effective_letter_multipliers);
 
     int orig_right_col = gen->shadow_right_col;
     int orig_tiles_played = gen->tiles_played;
@@ -698,15 +734,18 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     gen->shadow_word_multiplier = orig_wordmul;
 
     if (restricted_any) {
-        memcpy(&gen->rack, &rack_copy, sizeof(Rack));
+        /* Restore rack using struct assignment */
+        gen->rack = gen->rack_shadow_right_copy;
         gen->rack_bits = orig_rack_bits;
-        memcpy(gen->descending_tile_scores, desc_scores_copy, sizeof(desc_scores_copy));
+        /* Restore tile scores */
+        COPY_14_BYTES(gen->descending_tile_scores, gen->descending_tile_scores_copy);
     }
 
     if (changed_multipliers) {
         gen->num_unrestricted_multipliers = orig_num_unrestricted;
-        memcpy(gen->descending_cross_word_multipliers, xw_copy, sizeof(xw_copy));
-        memcpy(gen->descending_effective_letter_multipliers, eff_copy, sizeof(eff_copy));
+        /* Restore multiplier arrays */
+        COPY_14_BYTES(gen->descending_cross_word_multipliers, gen->desc_xw_muls_copy);
+        COPY_14_BYTES(gen->descending_effective_letter_multipliers, gen->desc_eff_letter_muls_copy);
     }
 
     gen->shadow_right_col = orig_right_col;
@@ -1132,11 +1171,11 @@ static void gen_shadow(MoveGenState *gen) {
                  * same as actual move generation. */
                 if (!is_anchor(gen, col)) continue;
 
-                /* Save state that shadow_play_for_anchor may modify */
-                Rack saved_rack;
-                memcpy(&saved_rack, &gen->rack, sizeof(Rack));
+                /* Save state that shadow_play_for_anchor may modify.
+                 * Use struct assignment and COPY_14_BYTES to avoid memcpy overhead. */
+                Rack saved_rack = gen->rack;
                 Equity saved_scores[RACK_SIZE];
-                memcpy(saved_scores, gen->descending_tile_scores, sizeof(saved_scores));
+                COPY_14_BYTES(saved_scores, gen->descending_tile_scores);
 
 #if USE_SHADOW_DEBUG
                 /* Check rack state before processing anchor */
@@ -1157,8 +1196,8 @@ static void gen_shadow(MoveGenState *gen) {
                 shadow_play_for_anchor(gen, col);
 
                 /* Restore state */
-                memcpy(&gen->rack, &saved_rack, sizeof(Rack));
-                memcpy(gen->descending_tile_scores, saved_scores, sizeof(saved_scores));
+                gen->rack = saved_rack;
+                COPY_14_BYTES(gen->descending_tile_scores, saved_scores);
 
 #if USE_SHADOW_DEBUG
                 if (gen->rack.total != initial_rack_total) {
@@ -1614,16 +1653,37 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
         rightx = gen->board->v_rightx;
     }
 
+#if USE_ROW_CACHE
+    /* Copy data from board arrays to local cache (benefits L1 cache on ARM64) */
     for (int col = 0; col < BOARD_DIM; col++) {
         int idx = base_idx + col;
-
         gen->row_letters[col] = letters[idx];
         gen->row_cross_sets[col] = cross_sets[idx];
-        gen->row_cross_scores[col] = cross_scores[idx];  /* Already in eighths */
+        gen->row_cross_scores[col] = cross_scores[idx];
         gen->row_leftx[col] = leftx[idx];
         gen->row_rightx[col] = rightx[idx];
+    }
+#else
+    /* Point directly into board arrays (faster on 68000 with no cache) */
+    gen->row_letters = &letters[base_idx];
+    gen->row_cross_sets = &cross_sets[base_idx];
+    gen->row_cross_scores = &cross_scores[base_idx];
+    gen->row_leftx = &leftx[base_idx];
+    gen->row_rightx = &rightx[base_idx];
+#endif
 
-        /* Bonuses need physical board coordinates */
+#if USE_BONUS_TRANSPOSE
+    /* Pointer-based bonus access: use pre-transposed arrays */
+    if (dir == DIR_HORIZONTAL) {
+        gen->row_bonuses = &gen->board->h_bonuses[base_idx];
+    } else {
+        gen->row_bonuses = &gen->board->v_bonuses[base_idx];
+    }
+#endif
+
+    /* Anchors always need per-column computation (depend on neighboring tiles) */
+    for (int col = 0; col < BOARD_DIM; col++) {
+        /* Get physical board coordinates for anchor checks */
         int board_row, board_col;
         if (dir == DIR_HORIZONTAL) {
             board_row = row;
@@ -1632,10 +1692,15 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
             board_row = col;  /* Transposed: algorithm row = physical col */
             board_col = row;  /* Transposed: algorithm col = physical row */
         }
+
+#if !USE_BONUS_TRANSPOSE
+        /* Array-based: compute transposed bonus index */
         gen->row_bonuses[col] = gen->board->bonuses[board_row * BOARD_DIM + board_col];
+#endif
 
         /* Compute anchor status: empty square adjacent to a tile */
         gen->row_is_anchor[col] = 0;
+        int idx = base_idx + col;
         if (letters[idx] == ALPHABET_EMPTY_SQUARE_MARKER) {
             /* Check all 4 neighbors using h_letters (canonical view) */
             int has_neighbor = 0;

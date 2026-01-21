@@ -134,6 +134,19 @@ void board_init(Board *board) {
         /* Shared */
         board->bonuses[i] = BONUS_LAYOUT[i];
     }
+
+#if USE_BONUS_TRANSPOSE
+    /* Initialize transposed bonus arrays for pointer-based cache_row access */
+    for (int row = 0; row < BOARD_DIM; row++) {
+        for (int col = 0; col < BOARD_DIM; col++) {
+            int h_idx = row * BOARD_DIM + col;  /* row-major */
+            int v_idx = col * BOARD_DIM + row;  /* transposed */
+            board->h_bonuses[h_idx] = BONUS_LAYOUT[h_idx];
+            board->v_bonuses[v_idx] = BONUS_LAYOUT[h_idx];
+        }
+    }
+#endif
+
     board->tiles_played = 0;
 }
 
