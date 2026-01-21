@@ -5,6 +5,33 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["scrabble_symbols.h"])
 
 # ---------------------------------------------------------------------------
+# KLV16 Reader Library
+# ---------------------------------------------------------------------------
+
+cc_library(
+    name = "klv",
+    srcs = ["klv.cpp"],
+    hdrs = ["klv.h"],
+)
+
+cc_test(
+    name = "klv_test",
+    srcs = ["klv_test.cpp"],
+    data = [
+        "//:data/NWL23.klv16",
+        "//:data/CSW24.klv16",
+    ],
+    defines = [
+        'KLV_NWL23=\\"data/NWL23.klv16\\"',
+        'KLV_CSW24=\\"data/CSW24.klv16\\"',
+    ],
+    deps = [
+        ":klv",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# ---------------------------------------------------------------------------
 # Combined Correctness and Performance Tests
 # ---------------------------------------------------------------------------
 
@@ -64,6 +91,105 @@ cc_test(
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# 1000-Game Timing Benchmark
+# Build ROMs with: make timing-builds
+# Run with: bazel test //tests/gxtest:scrabble_timing_test
+# ---------------------------------------------------------------------------
+
+cc_test(
+    name = "scrabble_timing_test",
+    srcs = [
+        "scrabble_timing_test.cpp",
+    ],
+    data = [
+        # Shadow timing ROMs and ELFs
+        "//:out/scrabble-nwl23-shadow-timing.bin",
+        "//:out/scrabble-csw24-shadow-timing.bin",
+        "//:build/nwl23-shadow-timing/scrabble.elf",
+        "//:build/csw24-shadow-timing/scrabble.elf",
+        # NoShadow timing ROMs and ELFs
+        "//:out/scrabble-nwl23-noshadow-timing.bin",
+        "//:out/scrabble-csw24-noshadow-timing.bin",
+        "//:build/nwl23-noshadow-timing/scrabble.elf",
+        "//:build/csw24-noshadow-timing/scrabble.elf",
+        # KLV files for leave value computation
+        "//:data/NWL23.klv16",
+        "//:data/CSW24.klv16",
+    ],
+    defines = [
+        # Shadow timing
+        'ROM_NWL23_SHADOW_TIMING=\\"out/scrabble-nwl23-shadow-timing.bin\\"',
+        'ROM_CSW24_SHADOW_TIMING=\\"out/scrabble-csw24-shadow-timing.bin\\"',
+        'ELF_NWL23_SHADOW_TIMING=\\"build/nwl23-shadow-timing/scrabble.elf\\"',
+        'ELF_CSW24_SHADOW_TIMING=\\"build/csw24-shadow-timing/scrabble.elf\\"',
+        # NoShadow timing
+        'ROM_NWL23_NOSHADOW_TIMING=\\"out/scrabble-nwl23-noshadow-timing.bin\\"',
+        'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
+        'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
+        'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        # KLV files
+        'KLV_NWL23=\\"data/NWL23.klv16\\"',
+        'KLV_CSW24=\\"data/CSW24.klv16\\"',
+    ],
+    # Manual tag excludes from `bazel test //...` - must be run explicitly
+    # Eternal timeout for 8000 games (4 variants x 1000 each + 100-game tests)
+    tags = ["manual"],
+    timeout = "eternal",
+    deps = [
+        ":klv",
+        "//gxtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# HTML Timing Report Generator
+# Build ROMs with: make timing-builds
+# Run with: bazel run //tests/gxtest:scrabble_timing_report -- -n 100 -o report.html
+# ---------------------------------------------------------------------------
+
+cc_binary(
+    name = "scrabble_timing_report",
+    srcs = [
+        "scrabble_timing_report.cpp",
+    ],
+    data = [
+        # Shadow timing ROMs and ELFs
+        "//:out/scrabble-nwl23-shadow-timing.bin",
+        "//:out/scrabble-csw24-shadow-timing.bin",
+        "//:build/nwl23-shadow-timing/scrabble.elf",
+        "//:build/csw24-shadow-timing/scrabble.elf",
+        # NoShadow timing ROMs and ELFs
+        "//:out/scrabble-nwl23-noshadow-timing.bin",
+        "//:out/scrabble-csw24-noshadow-timing.bin",
+        "//:build/nwl23-noshadow-timing/scrabble.elf",
+        "//:build/csw24-noshadow-timing/scrabble.elf",
+        # KLV files for leave value computation
+        "//:data/NWL23.klv16",
+        "//:data/CSW24.klv16",
+    ],
+    defines = [
+        # Shadow timing
+        'ROM_NWL23_SHADOW_TIMING=\\"out/scrabble-nwl23-shadow-timing.bin\\"',
+        'ROM_CSW24_SHADOW_TIMING=\\"out/scrabble-csw24-shadow-timing.bin\\"',
+        'ELF_NWL23_SHADOW_TIMING=\\"build/nwl23-shadow-timing/scrabble.elf\\"',
+        'ELF_CSW24_SHADOW_TIMING=\\"build/csw24-shadow-timing/scrabble.elf\\"',
+        # NoShadow timing
+        'ROM_NWL23_NOSHADOW_TIMING=\\"out/scrabble-nwl23-noshadow-timing.bin\\"',
+        'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
+        'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
+        'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        # KLV files
+        'KLV_NWL23=\\"data/NWL23.klv16\\"',
+        'KLV_CSW24=\\"data/CSW24.klv16\\"',
+    ],
+    deps = [
+        ":klv",
+        "//gxtest",
     ],
 )
 
