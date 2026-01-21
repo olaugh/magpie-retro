@@ -22,7 +22,7 @@
 namespace {
 
 constexpr int MAX_GAME_FRAMES = 30000;
-constexpr int DEFAULT_num_games = 4;
+constexpr int DEFAULT_NUM_GAMES = 4;
 
 // Buffer sizes for nm output parsing
 constexpr size_t NM_OUTPUT_LINE_BUFFER_SIZE = 512;
@@ -106,7 +106,7 @@ struct AggregatedFuncStats {
 
 void RunParallelProfile(const char* rom_path, const char* elf_path,
                         const char* name, uint32_t sample_rate = 1,
-                        int num_games = DEFAULT_num_games) {
+                        int num_games = DEFAULT_NUM_GAMES) {
     std::cout << "\n======================================" << std::endl;
     std::cout << name << " - " << num_games << " Game Parallel Profile" << std::endl;
     std::cout << "======================================" << std::endl;
