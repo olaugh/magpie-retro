@@ -38,6 +38,9 @@ LIBGCC = $(shell $(CC) -print-libgcc-file-name)
 # All build variants
 VARIANTS = nwl23-shadow nwl23-noshadow csw24-shadow csw24-noshadow
 
+# Debug flags for validation builds (set via make DEBUG_FLAGS="-DMULT_SMALL_DEBUG=1")
+DEBUG_FLAGS ?=
+
 .PHONY: all clean dirs $(VARIANTS) klv16
 
 # Build all variants
@@ -72,7 +75,7 @@ $(BUILD_DIR)/nwl23-shadow/klv_data.o: $(BUILD_DIR)/nwl23-shadow/klv_data.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 NWL23_SHADOW_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-shadow/%.o,$(C_SOURCES))
-NWL23_SHADOW_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1
+NWL23_SHADOW_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=1
 
 $(BUILD_DIR)/nwl23-shadow/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-shadow
 	$(CC) $(NWL23_SHADOW_CFLAGS) -c -o $@ $<
@@ -112,7 +115,7 @@ $(BUILD_DIR)/nwl23-noshadow/klv_data.o: $(BUILD_DIR)/nwl23-noshadow/klv_data.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 NWL23_NOSHADOW_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/nwl23-noshadow/%.o,$(C_SOURCES))
-NWL23_NOSHADOW_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=0
+NWL23_NOSHADOW_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"NWL23"' -DUSE_SHADOW=0
 
 $(BUILD_DIR)/nwl23-noshadow/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/nwl23-noshadow
 	$(CC) $(NWL23_NOSHADOW_CFLAGS) -c -o $@ $<
@@ -152,7 +155,7 @@ $(BUILD_DIR)/csw24-shadow/klv_data.o: $(BUILD_DIR)/csw24-shadow/klv_data.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 CSW24_SHADOW_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-shadow/%.o,$(C_SOURCES))
-CSW24_SHADOW_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1
+CSW24_SHADOW_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=1
 
 $(BUILD_DIR)/csw24-shadow/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-shadow
 	$(CC) $(CSW24_SHADOW_CFLAGS) -c -o $@ $<
@@ -192,7 +195,7 @@ $(BUILD_DIR)/csw24-noshadow/klv_data.o: $(BUILD_DIR)/csw24-noshadow/klv_data.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 CSW24_NOSHADOW_C_OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/csw24-noshadow/%.o,$(C_SOURCES))
-CSW24_NOSHADOW_CFLAGS = $(CFLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=0
+CSW24_NOSHADOW_CFLAGS = $(CFLAGS) $(DEBUG_FLAGS) -DLEXICON_NAME='"CSW24"' -DUSE_SHADOW=0
 
 $(BUILD_DIR)/csw24-noshadow/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)/csw24-noshadow
 	$(CC) $(CSW24_NOSHADOW_CFLAGS) -c -o $@ $<
@@ -209,6 +212,13 @@ $(OUT_DIR)/scrabble-csw24-noshadow.bin: $(BUILD_DIR)/csw24-noshadow/scrabble.elf
 	if [ $$SIZE -lt 131072 ]; then \
 		dd if=/dev/zero bs=1 count=$$((131072 - $$SIZE)) >> $@ 2>/dev/null; \
 	fi
+
+#
+# Debug build with MULT_SMALL validation
+#
+.PHONY: debug
+debug:
+	$(MAKE) all DEBUG_FLAGS="-DMULT_SMALL_DEBUG=1"
 
 #
 # Utility targets

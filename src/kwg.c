@@ -134,7 +134,7 @@ void compute_extension_sets(const uint32_t *kwg,
 CrossSet compute_cross_set(const uint32_t *kwg,
                            const MachineLetter *prefix, int prefix_len,
                            const MachineLetter *suffix, int suffix_len,
-                           int8_t *cross_score) {
+                           int16_t *cross_score) {
     CrossSet result = 0;
     *cross_score = 0;
 

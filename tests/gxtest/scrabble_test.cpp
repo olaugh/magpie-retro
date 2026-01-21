@@ -37,17 +37,18 @@ struct ExpectedResult {
 };
 
 // Expected results for seeds 0-9 (scores must match between shadow/noshadow)
+// Frame counts reflect score-in-eighths, MULT_SMALL, and word_multiplier switch optimizations
 constexpr ExpectedResult NWL23_EXPECTED[NUM_SEEDS] = {
-    {431, 467, 14582, 14371},  // Seed 0
-    {456, 463,  9114,  9023},  // Seed 1
-    {620, 344,  5897,  5948},  // Seed 2
-    {433, 411, 10222,  9693},  // Seed 3
-    {415, 451,  6848,  5845},  // Seed 4
-    {361, 458, 11963, 12763},  // Seed 5
-    {365, 506, 10144,  9784},  // Seed 6
-    {522, 440, 12675, 12430},  // Seed 7
-    {569, 308,  9198, 14683},  // Seed 8
-    {406, 483, 11998, 11832},  // Seed 9
+    {431, 467, 14204, 13953},  // Seed 0
+    {456, 463,  8906,  8775},  // Seed 1
+    {620, 344,  5766,  5788},  // Seed 2
+    {433, 411,  9983,  9428},  // Seed 3
+    {415, 451,  6702,  5692},  // Seed 4
+    {361, 458, 11700, 12419},  // Seed 5
+    {365, 506,  9940,  9536},  // Seed 6
+    {522, 440, 12387, 12096},  // Seed 7
+    {569, 308,  9002, 14290},  // Seed 8
+    {406, 483, 11731, 11521},  // Seed 9
 };
 
 // ---------------------------------------------------------------------------
@@ -74,8 +75,9 @@ void RunGameToFd(const char* rom_path, uint32_t seed, int write_fd) {
         // Run until game completes
         int frames = emu.RunUntilMemoryEquals(Scrabble::test_game_over, 1, MAX_GAME_FRAMES);
         if (frames >= 0) {
-            result.p0_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player0_score));
-            result.p1_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score));
+            // Scores are stored in eighths (×8); convert to display points
+            result.p0_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player0_score)) >> 3;
+            result.p1_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score)) >> 3;
             result.frames = emu.ReadLong(Scrabble::total_frames);
             result.completed = true;
         }
@@ -280,6 +282,74 @@ TEST(CSW24, AllSeeds) {
     double speedup = 100.0 * (static_cast<int>(noshadow_total) - static_cast<int>(shadow_total)) / noshadow_total;
     std::cout << "\nShadow speedup: " << std::fixed << std::setprecision(2)
               << speedup << "%" << std::endl;
+}
+
+// ---------------------------------------------------------------------------
+// 100-Game Validation Test (for MULT_SMALL debug assertions)
+// Run with: bazel test //tests/gxtest:scrabble_validation_test
+// ---------------------------------------------------------------------------
+
+constexpr int VALIDATION_NUM_GAMES = 100;
+
+TEST(Validation, NWL23_100Games) {
+    // Run 100 games on NWL23 shadow ROM to validate MULT_SMALL assertions
+    // If built with MULT_SMALL_DEBUG=1, any invalid multiplier will crash
+    std::vector<int> fds;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        fds.push_back(ForkGame(ROM_NWL23_SHADOW, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    int completed = 0;
+    uint32_t total_frames = 0;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        GameResult result = ReadGameResult(fds[seed]);
+        if (result.completed) {
+            completed++;
+            total_frames += result.frames;
+        }
+    }
+
+    std::cout << "\n=== NWL23 Validation: " << completed << "/" << VALIDATION_NUM_GAMES
+              << " games completed ===" << std::endl;
+    std::cout << "Total frames: " << total_frames << std::endl;
+
+    EXPECT_EQ(completed, VALIDATION_NUM_GAMES) << "All games should complete";
+}
+
+TEST(Validation, CSW24_100Games) {
+    // Run 100 games on CSW24 shadow ROM to validate MULT_SMALL assertions
+    std::vector<int> fds;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        fds.push_back(ForkGame(ROM_CSW24_SHADOW, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    int completed = 0;
+    uint32_t total_frames = 0;
+
+    for (int seed = 0; seed < VALIDATION_NUM_GAMES; seed++) {
+        GameResult result = ReadGameResult(fds[seed]);
+        if (result.completed) {
+            completed++;
+            total_frames += result.frames;
+        }
+    }
+
+    std::cout << "\n=== CSW24 Validation: " << completed << "/" << VALIDATION_NUM_GAMES
+              << " games completed ===" << std::endl;
+    std::cout << "Total frames: " << total_frames << std::endl;
+
+    EXPECT_EQ(completed, VALIDATION_NUM_GAMES) << "All games should complete";
 }
 
 } // namespace

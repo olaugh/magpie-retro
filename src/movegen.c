@@ -7,8 +7,9 @@
  * 3. After hitting separator node, continue right from anchor
  * 4. Record valid words when accepts flag is set
  *
- * Move selection uses equity = score*8 + leave_value (in eighths of a point)
+ * Move selection uses equity = score + leave_value (both in eighths of a point)
  * to prefer moves that leave good tiles for future turns.
+ * Tile scores and bingo bonus are pre-multiplied by 8 (TO_EIGHTHS macro).
  */
 
 #include "scrabble.h"
@@ -29,6 +30,17 @@
 /* Debug mode for tracking bad shadow cutoffs */
 #ifndef USE_SHADOW_DEBUG
 #define USE_SHADOW_DEBUG 0
+#endif
+
+/* Debug mode for validating MULT_SMALL arguments */
+#ifndef MULT_SMALL_DEBUG
+#define MULT_SMALL_DEBUG 0
+#endif
+
+#if MULT_SMALL_DEBUG
+/* Debug assertion: halts CPU on failure (writes to invalid address).
+ * Uses GCC statement expression to work inside comma expressions. */
+#define DEBUG_ASSERT(cond) ({ if (!(cond)) *(volatile int *)0xDEAD = 0; (void)0; })
 #endif
 
 /* Timing instrumentation for profiling */
@@ -138,7 +150,7 @@ typedef struct {
     MachineLetter row_letters[BOARD_DIM];
     uint8_t row_bonuses[BOARD_DIM];
     CrossSet row_cross_sets[BOARD_DIM];
-    int8_t row_cross_scores[BOARD_DIM];
+    int16_t row_cross_scores[BOARD_DIM];  /* In eighths (converted from board) */
     uint8_t row_is_anchor[BOARD_DIM];
     CrossSet row_leftx[BOARD_DIM];    /* Left extension sets for current dir */
     CrossSet row_rightx[BOARD_DIM];   /* Right extension sets for current dir */
@@ -158,10 +170,10 @@ typedef struct {
     int8_t shadow_left_col;
     int8_t shadow_right_col;
 
-    /* Descending tile scores for computing upper bounds */
+    /* Descending tile scores for computing upper bounds (in eighths) */
     /* Index 0 = highest, filled with rack tiles sorted descending */
-    int8_t descending_tile_scores[RACK_SIZE];
-    int8_t descending_tile_scores_copy[RACK_SIZE];  /* For restore after shadow right */
+    Equity descending_tile_scores[RACK_SIZE];
+    Equity descending_tile_scores_copy[RACK_SIZE];  /* For restore after shadow right */
 
     /* Unrestricted multipliers (positions where any tile can go) */
     /* Kept sorted descending by effective multiplier */
@@ -189,35 +201,59 @@ typedef struct {
     Equity best_leaves[RACK_SIZE];
 } MoveGenState;
 
-/* Tile scores for calculating move scores */
-static const uint8_t tile_scores[ALPHABET_SIZE] = {
-    0,  /* Blank */
-    1,  /* A */
-    3,  /* B */
-    3,  /* C */
-    2,  /* D */
-    1,  /* E */
-    4,  /* F */
-    2,  /* G */
-    4,  /* H */
-    1,  /* I */
-    8,  /* J */
-    5,  /* K */
-    1,  /* L */
-    3,  /* M */
-    1,  /* N */
-    1,  /* O */
-    3,  /* P */
-    10, /* Q */
-    1,  /* R */
-    1,  /* S */
-    1,  /* T */
-    1,  /* U */
-    4,  /* V */
-    4,  /* W */
-    8,  /* X */
-    4,  /* Y */
-    10  /* Z */
+/* Convert points to eighths for equity calculation */
+#define TO_EIGHTHS(x) ((x) * 8)
+
+/* Bingo bonus in eighths (50 points * 8) */
+#define BINGO_BONUS TO_EIGHTHS(50)
+
+/*
+ * MULT_SMALL: Multiply val by m where m is 1, 2, or 3.
+ * Returns the result (does not modify val in place).
+ * Works with any integer type. Uses adds to avoid 70-cycle MULS.
+ */
+#if MULT_SMALL_DEBUG
+#define MULT_SMALL(val, m) \
+    (DEBUG_ASSERT((m) >= 1 && (m) <= 3), \
+     (m) == 2 ? ((val) + (val)) : (m) == 3 ? ((val) + (val) + (val)) : (val))
+#else
+#define MULT_SMALL(val, m) \
+    ((m) == 2 ? ((val) + (val)) : (m) == 3 ? ((val) + (val) + (val)) : (val))
+#endif
+
+/* MULT_BY_SMALL: Multiply var in place by m (1, 2, or 3). */
+#define MULT_BY_SMALL(var, m) do { (var) = MULT_SMALL((var), (m)); } while(0)
+
+/* Tile scores in eighths of a point (pre-multiplied by 8 for equity calc).
+ * Equity (int16_t) avoids EXT.W when loading for MULS (saves 4 cycles per lookup). */
+static const Equity tile_scores[ALPHABET_SIZE] = {
+    TO_EIGHTHS(0),   /* Blank */
+    TO_EIGHTHS(1),   /* A */
+    TO_EIGHTHS(3),   /* B */
+    TO_EIGHTHS(3),   /* C */
+    TO_EIGHTHS(2),   /* D */
+    TO_EIGHTHS(1),   /* E */
+    TO_EIGHTHS(4),   /* F */
+    TO_EIGHTHS(2),   /* G */
+    TO_EIGHTHS(4),   /* H */
+    TO_EIGHTHS(1),   /* I */
+    TO_EIGHTHS(8),   /* J */
+    TO_EIGHTHS(5),   /* K */
+    TO_EIGHTHS(1),   /* L */
+    TO_EIGHTHS(3),   /* M */
+    TO_EIGHTHS(1),   /* N */
+    TO_EIGHTHS(1),   /* O */
+    TO_EIGHTHS(3),   /* P */
+    TO_EIGHTHS(10),  /* Q */
+    TO_EIGHTHS(1),   /* R */
+    TO_EIGHTHS(1),   /* S */
+    TO_EIGHTHS(1),   /* T */
+    TO_EIGHTHS(1),   /* U */
+    TO_EIGHTHS(4),   /* V */
+    TO_EIGHTHS(4),   /* W */
+    TO_EIGHTHS(8),   /* X */
+    TO_EIGHTHS(4),   /* Y */
+    TO_EIGHTHS(10)   /* Z */
 };
 
 /* Get letter multiplier from bonus type */
@@ -234,8 +270,8 @@ static inline uint8_t get_word_mult(uint8_t bonus) {
     return 1;
 }
 
-/* Get tile score (blanks score 0) */
-static inline int8_t get_tile_score(MachineLetter ml) {
+/* Get tile score in eighths (blanks score 0) */
+static inline Equity get_tile_score(MachineLetter ml) {
     if (IS_BLANKED(ml)) return 0;
     return tile_scores[ml];
 }
@@ -276,7 +312,7 @@ static void build_descending_tile_scores(MoveGenState *gen) {
     int count = 0;
 
     /* Collect all tile scores from rack */
-    int8_t scores[RACK_SIZE];
+    Equity scores[RACK_SIZE];
     for (MachineLetter ml = 0; ml < ALPHABET_SIZE && count < RACK_SIZE; ml++) {
         for (int i = 0; i < gen->rack.counts[ml] && count < RACK_SIZE; i++) {
             scores[count++] = tile_scores[ml];
@@ -285,7 +321,7 @@ static void build_descending_tile_scores(MoveGenState *gen) {
 
     /* Sort descending (simple insertion sort - rack is small) */
     for (int i = 1; i < count; i++) {
-        int8_t key = scores[i];
+        Equity key = scores[i];
         int j = i - 1;
         while (j >= 0 && scores[j] < key) {
             scores[j + 1] = scores[j];
@@ -327,7 +363,7 @@ static inline int get_lowest_bit_index(uint32_t x) {
 }
 
 /* Remove a score from descending tile scores array */
-static void remove_score_from_descending(MoveGenState *gen, int8_t score) {
+static void remove_score_from_descending(MoveGenState *gen, Equity score) {
     int count = gen->rack.total;
     for (int i = count; i-- > 0; ) {
         if (gen->descending_tile_scores[i] == score) {
@@ -379,7 +415,7 @@ static void maybe_recalc_effective_multipliers(MoveGenState *gen) {
         uint8_t xw_mult = gen->descending_cross_word_multipliers[i].multiplier;
         uint8_t col = gen->descending_cross_word_multipliers[i].column;
         uint8_t letter_mult = get_letter_mult(gen->row_bonuses[col]);
-        uint16_t eff_mult = gen->shadow_word_multiplier * letter_mult + xw_mult;
+        uint16_t eff_mult = MULT_SMALL(gen->shadow_word_multiplier, letter_mult) + xw_mult;
         insert_unrestricted_eff_letter_mult(gen, eff_mult);
         gen->num_unrestricted_multipliers++;
     }
@@ -399,7 +435,7 @@ static void insert_unrestricted_multipliers(MoveGenState *gen, int col) {
     uint8_t eff_xw_mult = letter_mult * this_word_mult * is_cross_word;
     insert_unrestricted_cross_word_mult(gen, eff_xw_mult, col);
 
-    uint16_t main_word_mult = gen->shadow_word_multiplier * letter_mult;
+    uint16_t main_word_mult = MULT_SMALL(gen->shadow_word_multiplier, letter_mult);
     insert_unrestricted_eff_letter_mult(gen, main_word_mult + eff_xw_mult);
 
     gen->num_unrestricted_multipliers++;
@@ -418,7 +454,7 @@ static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
     }
 
     MachineLetter ml = get_lowest_bit_index(possible_tiles);
-    int8_t score;
+    Equity score;
 
     /* Check if we have this letter, or need to use a blank */
     if (gen->rack.counts[ml] > 0) {
@@ -444,12 +480,12 @@ static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
 
     remove_score_from_descending(gen, score);
 
-    int16_t lsm = score * letter_mult;
+    int16_t lsm = MULT_SMALL(score, letter_mult);
     gen->shadow_mainword_restricted_score += lsm;
 
     /* Add perpendicular score if there's a cross-word */
     if (gen->row_cross_scores[col] >= 0) {
-        gen->shadow_perpendicular_additional_score += lsm * word_mult;
+        gen->shadow_perpendicular_additional_score += MULT_SMALL(lsm, word_mult);
     }
 
     return 1;
@@ -470,24 +506,36 @@ static Equity get_best_leave_for_tiles_remaining(const MoveGenState *gen, int ti
  */
 static void shadow_record(MoveGenState *gen) {
     /* Compute upper bound score: pair highest tiles with highest multipliers.
-     * Loop over all RACK_SIZE positions - unexplored positions have multiplier 0. */
-    /* Use explicit 16-bit casts to force native muls.w instead of __mulsi3 */
+     * Only loop for min(tiles in rack, unrestricted positions) - beyond that
+     * either tile scores or multipliers are 0. Saves ~70 cycles per MULS. */
     Equity tiles_played_score = 0;
-    for (int i = 0; i < RACK_SIZE; i++) {
+    int loop_count = gen->num_unrestricted_multipliers;
+    if (loop_count > gen->rack.total) loop_count = gen->rack.total;
+    for (int i = 0; i < loop_count; i++) {
         tiles_played_score += (int16_t)gen->descending_tile_scores[i] *
                               (int16_t)gen->descending_effective_letter_multipliers[i];
     }
 
-    Equity bingo_bonus = (gen->tiles_played >= RACK_SIZE) ? 50 : 0;
+    Equity bingo_bonus = (gen->tiles_played >= RACK_SIZE) ? BINGO_BONUS : 0;
 
-    Equity score = tiles_played_score +
-                   (gen->shadow_mainword_restricted_score * gen->shadow_word_multiplier) +
+    /* Accumulated word multiplier can be 1, 2, 3, 4, or 9 (6 is impossible,
+     * 27 is unlikely). Use adds for common cases; 4 and 9 are rare. */
+    Equity main_word_contrib;
+    Equity mws = gen->shadow_mainword_restricted_score;
+    switch (gen->shadow_word_multiplier) {
+    case 1:  main_word_contrib = mws; break;
+    case 2:  main_word_contrib = mws + mws; break;
+    case 3:  main_word_contrib = mws + mws + mws; break;
+    default: main_word_contrib = mws * gen->shadow_word_multiplier; break;
+    }
+
+    Equity score = tiles_played_score + main_word_contrib +
                    gen->shadow_perpendicular_additional_score + bingo_bonus;
 
     /* For equity, add best possible leave value.
      * Match actual move generation: add leave if KLV is available.
-     * (Original checked tiles_in_bag > 0, but actual gen doesn't) */
-    Equity equity = score << 3;  /* Convert to eighths */
+     * Score is already in eighths (tile scores pre-multiplied). */
+    Equity equity = score;
 #if USE_SHADOW_DEBUG
     shadow_debug_record_calls++;
 #endif
@@ -534,7 +582,7 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     uint32_t orig_rack_bits = gen->rack_bits;
 
     /* Save descending tile scores */
-    int8_t desc_scores_copy[RACK_SIZE];
+    Equity desc_scores_copy[RACK_SIZE];
     memcpy(desc_scores_copy, gen->descending_tile_scores, sizeof(desc_scores_copy));
 
     /* Save unrestricted multiplier state */
@@ -606,9 +654,9 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
         /* Add perpendicular cross-word score */
         if (gen->row_cross_scores[gen->shadow_right_col] >= 0) {
             gen->shadow_perpendicular_additional_score +=
-                gen->row_cross_scores[gen->shadow_right_col] * word_mult;
+                MULT_SMALL(gen->row_cross_scores[gen->shadow_right_col], word_mult);
         }
-        gen->shadow_word_multiplier *= word_mult;
+        MULT_BY_SMALL(gen->shadow_word_multiplier, word_mult);
 
         if (try_restrict_tile(gen, possible, letter_mult, word_mult,
                               gen->shadow_right_col)) {
@@ -752,7 +800,7 @@ static void nonplaythrough_shadow_play_left(MoveGenState *gen, int is_unique) {
         uint8_t letter_mult = get_letter_mult(bonus);
         uint8_t word_mult = get_word_mult(bonus);
 
-        gen->shadow_word_multiplier *= word_mult;
+        MULT_BY_SMALL(gen->shadow_word_multiplier, word_mult);
 
         CrossSet cross_set = gen->row_cross_sets[gen->shadow_left_col];
         possible_left &= cross_set;
@@ -851,10 +899,10 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique) {
         /* Add perpendicular score */
         if (gen->row_cross_scores[gen->shadow_left_col] >= 0) {
             gen->shadow_perpendicular_additional_score +=
-                gen->row_cross_scores[gen->shadow_left_col] * word_mult;
+                MULT_SMALL(gen->row_cross_scores[gen->shadow_left_col], word_mult);
         }
 
-        gen->shadow_word_multiplier *= word_mult;
+        MULT_BY_SMALL(gen->shadow_word_multiplier, word_mult);
 
         if (!try_restrict_tile(gen, possible_left, letter_mult, word_mult,
                                gen->shadow_left_col)) {
@@ -912,7 +960,7 @@ static void shadow_start_nonplaythrough(MoveGenState *gen) {
     /* Add perpendicular score */
     if (gen->row_cross_scores[gen->shadow_left_col] >= 0) {
         gen->shadow_perpendicular_additional_score =
-            gen->row_cross_scores[gen->shadow_left_col] * word_mult;
+            MULT_SMALL(gen->row_cross_scores[gen->shadow_left_col], word_mult);
     }
 
     /* For single-tile plays, word multiplier applies to the single tile.
@@ -1087,7 +1135,7 @@ static void gen_shadow(MoveGenState *gen) {
                 /* Save state that shadow_play_for_anchor may modify */
                 Rack saved_rack;
                 memcpy(&saved_rack, &gen->rack, sizeof(Rack));
-                int8_t saved_scores[RACK_SIZE];
+                Equity saved_scores[RACK_SIZE];
                 memcpy(saved_scores, gen->descending_tile_scores, sizeof(saved_scores));
 
 #if USE_SHADOW_DEBUG
@@ -1224,16 +1272,25 @@ static int is_better_move(Equity new_equity, int16_t new_score,
 static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     gen->move_count++;
 
-    /* Calculate final score */
-    int16_t score = gen->main_word_score * gen->word_multiplier + gen->cross_score;
+    /* Accumulated word multiplier can be 1, 2, 3, 4, or 9 (6 is impossible,
+     * 27 is unlikely). Use adds for common cases; 4 and 9 are rare. */
+    int16_t main_word_contrib;
+    int16_t mws = gen->main_word_score;
+    switch (gen->word_multiplier) {
+    case 1:  main_word_contrib = mws; break;
+    case 2:  main_word_contrib = mws + mws; break;
+    case 3:  main_word_contrib = mws + mws + mws; break;
+    default: main_word_contrib = mws * gen->word_multiplier; break;
+    }
+    int16_t score = main_word_contrib + gen->cross_score;
 
     /* Add bingo bonus for using all 7 tiles */
     if (gen->tiles_played == RACK_SIZE) {
-        score += 50;
+        score += BINGO_BONUS;
     }
 
-    /* Calculate equity = score*8 + leave_value (both in eighths of a point) */
-    Equity equity = (Equity)(score << 3);
+    /* Equity = score + leave_value (both in eighths of a point) */
+    Equity equity = (Equity)score;
 
     /* Add leave value if KLV is available */
     if (gen->klv != NULL) {
@@ -1270,7 +1327,7 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     move->dir = gen->dir;
     move->tiles_played = gen->tiles_played;
     move->tiles_length = rightstrip - leftstrip + 1;
-    move->score = score;
+    move->score = score;  /* In eighths */
     move->equity = equity;
 
     /* Copy tiles from strip */
@@ -1319,14 +1376,14 @@ static void go_on(MoveGenState *gen, int col, MachineLetter letter,
     int prev_main_score = gen->main_word_score;
     int prev_cross_score = gen->cross_score;
 
-    gen->word_multiplier *= word_mult;
-    gen->main_word_score += get_tile_score(letter) * letter_mult;
+    MULT_BY_SMALL(gen->word_multiplier, word_mult);
+    gen->main_word_score += MULT_SMALL(get_tile_score(letter), letter_mult);
 
     /* Add cross-word score if placing fresh tile that forms cross-word */
     if (fresh_tile && gen->row_cross_scores[col] >= 0) {
-        int cross_word_score = get_tile_score(letter) * letter_mult +
+        int cross_word_score = MULT_SMALL(get_tile_score(letter), letter_mult) +
                                gen->row_cross_scores[col];
-        gen->cross_score += cross_word_score * word_mult;
+        gen->cross_score += MULT_SMALL(cross_word_score, word_mult);
     }
 
     if (col <= gen->anchor_col) {
@@ -1539,7 +1596,7 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
     /* Select arrays based on direction */
     const uint8_t *letters;
     const CrossSet *cross_sets;
-    const int8_t *cross_scores;
+    const int16_t *cross_scores;
     const CrossSet *leftx;
     const CrossSet *rightx;
 
@@ -1562,7 +1619,7 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
 
         gen->row_letters[col] = letters[idx];
         gen->row_cross_sets[col] = cross_sets[idx];
-        gen->row_cross_scores[col] = cross_scores[idx];
+        gen->row_cross_scores[col] = cross_scores[idx];  /* Already in eighths */
         gen->row_leftx[col] = leftx[idx];
         gen->row_rightx[col] = rightx[idx];
 

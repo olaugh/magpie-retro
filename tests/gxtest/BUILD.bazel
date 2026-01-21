@@ -14,6 +14,8 @@ cc_test(
         "scrabble_test.cpp",
         "scrabble_symbols.h",
     ],
+    # Exclude Validation.* tests (run separately via scrabble_validation_test)
+    args = ["--gtest_filter=-Validation.*"],
     data = [
         "//:out/scrabble-nwl23-shadow.bin",
         "//:out/scrabble-nwl23-noshadow.bin",
@@ -26,6 +28,39 @@ cc_test(
         'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
         'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
     ],
+    deps = [
+        "//gxtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# 100-Game Validation Test (for MULT_SMALL debug assertions)
+# Build ROMs with: make debug
+# Run with: bazel test //tests/gxtest:scrabble_validation_test
+# ---------------------------------------------------------------------------
+
+cc_test(
+    name = "scrabble_validation_test",
+    srcs = [
+        "scrabble_test.cpp",
+        "scrabble_symbols.h",
+    ],
+    args = ["--gtest_filter=Validation.*"],
+    data = [
+        "//:out/scrabble-nwl23-shadow.bin",
+        "//:out/scrabble-nwl23-noshadow.bin",
+        "//:out/scrabble-csw24-shadow.bin",
+        "//:out/scrabble-csw24-noshadow.bin",
+    ],
+    defines = [
+        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
+        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+    ],
+    # Longer timeout for 100 games
+    timeout = "long",
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",

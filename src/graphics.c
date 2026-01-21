@@ -808,13 +808,13 @@ void draw_scores(const GameState *game) {
     /* Player 1 score on row 0 */
     draw_char(0, 0, (game->current_player == 0) ? '>' : ' ', 0);
     draw_string(1, 0, "P1:", 0);
-    draw_number(4, 0, game->players[0].score, 0);
+    draw_number(4, 0, game->players[0].score >> 3, 0);  /* Convert from eighths */
     draw_string(8, 0, "        ", 0);  /* Clear trailing */
 
     /* Player 2 score on row 1 */
     draw_char(0, 1, (game->current_player == 1) ? '>' : ' ', 0);
     draw_string(1, 1, "P2:", 0);
-    draw_number(4, 1, game->players[1].score, 0);
+    draw_number(4, 1, game->players[1].score >> 3, 0);  /* Convert from eighths */
     draw_string(8, 1, "        ", 0);  /* Clear trailing */
 }
 
@@ -860,8 +860,8 @@ void draw_history(const HistoryEntry *hist, int count) {
                     draw_char(HISTORY_COL + 1 + j, y, c, pal);
                 }
             }
-            /* Score (3 digits) */
-            draw_number_3d(HISTORY_COL + 10, y, h->score, 0);
+            /* Score (3 digits) - convert from eighths */
+            draw_number_3d(HISTORY_COL + 10, y, h->score >> 3, 0);
             /* Space */
             draw_char(HISTORY_COL + 13, y, ' ', 0);
             /* Equity (3 hex digits) */
