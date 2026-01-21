@@ -17,7 +17,6 @@ import re
 import sys
 import html
 import json
-import textwrap
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -179,8 +178,7 @@ def parse_objdump(input_file: str) -> dict[str, list[Function]]:
                 if pending_source_lines:
                     # Use the most recent source reference
                     src_file, src_line, src_text = pending_source_lines[-1]
-                    # Dedent to remove common leading whitespace while preserving relative indent
-                    src_text = textwrap.dedent(src_text)
+                    # Preserve original indentation from source file
                     current_source_block = SourceBlock(
                         file_path=src_file,
                         line_number=src_line,
@@ -274,184 +272,295 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
     <title>{html.escape(display_name)} - Disassembly Explorer</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+        /* === Apple System Dark Mode Palette === */
+        :root {{
+            --bg-app: #1E1E1E;
+            --bg-sidebar: #292A30;
+            --bg-toolbar: #323232;
+            --bg-source-header: #000000;
+            --border-row: #333333;
+            --border-subtle: #3A3A3C;
+            --selection-bg: #0060FA;
+            --selection-text: #FFFFFF;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --text-muted: #8F8F8F;
+            --text-dim: #666666;
+            --accent-source: #FF79C6;
+            --accent-keyword: #66D9EF;
+            --accent-function: #A6E22E;
+        }}
+
         body {{
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             display: flex;
             height: 100vh;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: var(--bg-app);
+            color: var(--text-secondary);
+            -webkit-font-smoothing: antialiased;
         }}
+
+        /* === Sidebar (File Navigator) === */
         .sidebar {{
-            width: 200px;
-            background: #252526;
-            border-right: 1px solid #3c3c3c;
+            width: 180px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
-            padding: 12px 0;
+            padding: 0;
             flex-shrink: 0;
         }}
-        .sidebar h2 {{
-            color: #888;
+        .sidebar-header {{
+            padding: 8px 12px;
             font-size: 11px;
             font-weight: 600;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-subtle);
         }}
         .sidebar a {{
             display: block;
-            padding: 4px 12px;
-            color: #ccc;
+            padding: 3px 12px;
+            color: var(--text-secondary);
             text-decoration: none;
-            font-size: 12px;
-            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 11px;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            border-bottom: 1px solid transparent;
         }}
-        .sidebar a:hover {{ background: #2a2d2e; }}
-        .sidebar a.current {{ background: #094771; color: #fff; }}
+        .sidebar a:hover {{ background: rgba(255,255,255,0.05); }}
+        .sidebar a.current {{
+            background: var(--selection-bg);
+            color: var(--selection-text);
+        }}
+        .search {{
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-subtle);
+        }}
+        .search input {{
+            width: 100%;
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+        }}
+        .search input:focus {{
+            outline: none;
+            border-color: var(--selection-bg);
+            background: rgba(255,255,255,0.12);
+        }}
+        .search input::placeholder {{ color: var(--text-dim); }}
+
+        /* === Main Content Area === */
         .main {{
             flex: 1;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            background: var(--bg-app);
         }}
+
+        /* === NSToolbar Style === */
         .toolbar {{
-            background: #333;
-            padding: 8px 16px;
+            height: 28px;
+            min-height: 28px;
+            background: var(--bg-toolbar);
+            padding: 0 12px;
             display: flex;
             align-items: center;
-            gap: 16px;
-            border-bottom: 1px solid #444;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-subtle);
         }}
-        .toolbar h1 {{
-            font-size: 14px;
-            color: #569cd6;
-            font-family: 'SF Mono', Consolas, monospace;
-        }}
-        .toolbar .view-toggle {{
+
+        /* Breadcrumb / Jump Bar */
+        .breadcrumb {{
             display: flex;
+            align-items: center;
             gap: 4px;
+            font-size: 11px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-secondary);
         }}
-        .toolbar button {{
-            background: #444;
-            border: 1px solid #555;
-            color: #ccc;
-            padding: 4px 12px;
-            font-size: 12px;
+        .breadcrumb-sep {{
+            color: var(--text-dim);
+            font-size: 9px;
+        }}
+        .breadcrumb-item {{
+            color: var(--text-secondary);
+        }}
+        .breadcrumb-item.current {{
+            color: var(--text-primary);
+        }}
+
+        /* Segmented Control */
+        .segmented-control {{
+            display: flex;
+            background: rgba(255,255,255,0.06);
+            border-radius: 5px;
+            padding: 1px;
+            margin-left: auto;
+        }}
+        .segmented-control button {{
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 3px 10px;
+            font-size: 11px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
             cursor: pointer;
-            border-radius: 3px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
         }}
-        .toolbar button:hover {{ background: #505050; }}
-        .toolbar button.active {{ background: #094771; border-color: #094771; color: #fff; }}
-        .toolbar label {{
+        .segmented-control button:hover {{
+            color: var(--text-secondary);
+        }}
+        .segmented-control button.active {{
+            background: rgba(255,255,255,0.15);
+            color: var(--text-primary);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }}
+
+        .toolbar-checkbox {{
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #aaa;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-left: 8px;
         }}
+        .toolbar-checkbox input {{
+            accent-color: var(--selection-bg);
+        }}
+
+        /* === Content Area === */
         .content {{
             flex: 1;
             overflow: auto;
             padding: 0;
+            background: var(--bg-app);
         }}
+
+        /* === Function Block === */
         .function {{
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--border-row);
         }}
         .func-header {{
-            background: #2d2d2d;
-            padding: 8px 16px;
-            font-family: 'SF Mono', Consolas, monospace;
-            font-size: 13px;
-            color: #dcdcaa;
-            font-weight: bold;
+            background: var(--bg-sidebar);
+            padding: 4px 12px;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            font-size: 11px;
+            line-height: 1.3;
+            color: var(--accent-function);
+            font-weight: 600;
             position: sticky;
             top: 0;
             z-index: 10;
+            border-bottom: 1px solid var(--border-row);
         }}
-        .func-header .addr {{ color: #808080; font-weight: normal; margin-right: 12px; }}
-        .block {{
-            border-left: 3px solid transparent;
-            margin: 0;
+        .func-header .addr {{
+            color: var(--text-dim);
+            font-weight: normal;
+            margin-right: 8px;
         }}
-        .block:hover {{ background: #252525; }}
-        .block.src-primary {{ border-left-color: #4ec9b0; }}
-        .block.asm-primary {{ border-left-color: #569cd6; }}
+
+        /* === Source Line (Section Header) === */
         .source-line {{
-            padding: 2px 16px 2px 20px;
-            font-family: 'SF Mono', Consolas, monospace;
-            font-size: 12px;
-            color: #9cdcfe;
-            background: #1a2a1a;
+            background: var(--bg-source-header);
+            padding: 3px 0;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+            font-size: 11px;
+            line-height: 1.3;
             cursor: pointer;
-            display: flex;
-            align-items: flex-start;
+            display: grid;
+            grid-template-columns: 16px 50px 1fr;
+            align-items: start;
+            border-bottom: 1px solid var(--border-row);
         }}
-        .source-line:hover {{ background: #1f3f1f; }}
+        .source-line:hover {{ background: #0a0a0a; }}
+        .source-line.selected {{
+            background: var(--selection-bg) !important;
+        }}
+        .source-line.selected * {{
+            color: var(--selection-text) !important;
+        }}
+        .source-line .toggle {{
+            color: var(--text-dim);
+            text-align: center;
+            font-size: 9px;
+            padding-top: 1px;
+        }}
         .source-line .line-num {{
-            color: #6a9955;
-            min-width: 50px;
+            color: var(--text-dim);
+            text-align: right;
+            padding-right: 8px;
             user-select: none;
         }}
-        .source-line .code {{ flex: 1; white-space: pre; }}
-        .source-line .toggle {{
-            color: #666;
-            margin-right: 8px;
-            width: 16px;
-            text-align: center;
+        .source-line .code {{
+            color: var(--text-primary);
+            font-weight: 600;
+            white-space: pre;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
+
+        /* === Assembly Grid Layout === */
         .asm-line {{
-            padding: 1px 16px 1px 48px;
-            font-family: 'SF Mono', Consolas, monospace;
+            display: grid;
+            grid-template-columns: 80px 100px 1fr;
+            padding: 1px 0;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
             font-size: 11px;
-            display: flex;
-            gap: 12px;
-            color: #9cdcfe;
+            line-height: 1.3;
+            border-bottom: 1px solid var(--border-row);
+            background: var(--bg-app);
         }}
-        .asm-line:hover {{ background: #252530; }}
-        .asm-line .addr {{ color: #6796e6; min-width: 70px; }}
-        .asm-line .hex {{ color: #666; min-width: 100px; }}
-        .asm-line .instr {{ color: #dcdcaa; flex: 1; }}
+        .asm-line:hover {{ background: #252525; }}
+        .asm-line.selected {{
+            background: var(--selection-bg) !important;
+        }}
+        .asm-line.selected * {{
+            color: var(--selection-text) !important;
+        }}
+        .asm-line .addr {{
+            color: var(--text-dim);
+            text-align: right;
+            padding-right: 12px;
+        }}
+        .asm-line .hex {{
+            color: var(--text-dim);
+            padding-right: 12px;
+        }}
+        .asm-line .instr {{
+            color: var(--text-muted);
+        }}
+
+        /* === Block Containers === */
+        .block {{ margin: 0; }}
+        .asm-group {{ }}
+        .asm-group.collapsed {{ display: none; }}
+        .source-group {{ }}
+        .source-group.collapsed {{ display: none; }}
+
         .asm-block {{
-            background: #1a1a2a;
             cursor: pointer;
         }}
-        .asm-block:hover {{ background: #1f1f3f; }}
-        .asm-block .asm-line {{ padding-left: 20px; }}
-        .collapsed {{ display: none; }}
-        .expand-indicator {{
-            color: #666;
-            font-size: 10px;
-            padding: 2px 16px 2px 48px;
-            cursor: pointer;
-        }}
-        .expand-indicator:hover {{ color: #aaa; }}
 
-        /* Source-primary view */
-        .view-source .asm-group {{ margin-left: 32px; }}
-        .view-source .asm-group.collapsed {{ display: none; }}
+        /* === View Modes === */
+        .view-source .asm-group {{ }}
+        .view-machine .source-group {{ background: var(--bg-source-header); }}
 
-        /* Machine-primary view */
-        .view-machine .source-group {{ margin-left: 32px; background: #1a2a1a; }}
-        .view-machine .source-group.collapsed {{ display: none; }}
-
-        /* Search */
-        .search {{
-            padding: 8px 12px;
+        /* === Row Selection (full edge-to-edge) === */
+        .content *:focus {{
+            outline: none;
         }}
-        .search input {{
-            width: 100%;
-            padding: 4px 8px;
-            background: #3c3c3c;
-            border: 1px solid #555;
-            border-radius: 3px;
-            color: #d4d4d4;
-            font-size: 11px;
-        }}
-        .search input:focus {{ outline: none; border-color: #007acc; }}
     </style>
 </head>
 <body>
     <nav class="sidebar">
-        <h2>Files</h2>
+        <div class="sidebar-header">Files</div>
         <div class="search">
             <input type="text" id="search" placeholder="Filter..." oninput="filterFiles()">
         </div>
@@ -461,14 +570,18 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
     </nav>
     <div class="main">
         <div class="toolbar">
-            <h1>{html.escape(display_name)}</h1>
-            <div class="view-toggle">
+            <div class="breadcrumb">
+                <span class="breadcrumb-item">{html.escape(binary_name)}</span>
+                <span class="breadcrumb-sep">&#9656;</span>
+                <span class="breadcrumb-item current">{html.escape(display_name)}</span>
+            </div>
+            <div class="segmented-control">
                 <button id="btn-source" class="active" onclick="setView('source')">Source Order</button>
                 <button id="btn-machine" onclick="setView('machine')">Machine Order</button>
             </div>
-            <label>
+            <label class="toolbar-checkbox">
                 <input type="checkbox" id="expand-all" checked onchange="toggleExpandAll()">
-                Expand all
+                Expand
             </label>
         </div>
         <div class="content" id="content">
@@ -498,23 +611,23 @@ function renderSourceView() {{
             const hasAsm = block.asm.length > 0;
             const expanded = expandAll ? '' : 'collapsed';
 
-            html += `<div class="block src-primary">`;
+            html += `<div class="block">`;
 
-            // Source line
+            // Source line (section header style)
             if (block.src || block.line > 0) {{
-                const toggleIcon = hasAsm ? (expandAll ? '▼' : '▶') : '';
-                html += `<div class="source-line" onclick="toggleBlock('${{blockId}}')">`;
+                const toggleIcon = hasAsm ? (expandAll ? '&#9662;' : '&#9656;') : '';
+                html += `<div class="source-line" onclick="toggleBlock('${{blockId}}')" tabindex="0">`;
                 html += `<span class="toggle">${{toggleIcon}}</span>`;
                 html += `<span class="line-num">${{block.line || ''}}</span>`;
                 html += `<span class="code">${{escapeHtml(block.src || '')}}</span>`;
                 html += `</div>`;
             }}
 
-            // Assembly lines
+            // Assembly lines (grid layout)
             if (hasAsm) {{
                 html += `<div class="asm-group ${{expanded}}" id="${{blockId}}">`;
                 for (const asm of block.asm) {{
-                    html += `<div class="asm-line">`;
+                    html += `<div class="asm-line" tabindex="0">`;
                     html += `<span class="addr">${{asm.addr}}</span>`;
                     html += `<span class="hex">${{asm.hex}}</span>`;
                     html += `<span class="instr">${{escapeHtml(asm.instr)}}</span>`;
@@ -634,96 +747,159 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
     <title>Disassembly Explorer - {html.escape(binary_name)}</title>
     <style>
         * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+        :root {{
+            --bg-app: #1E1E1E;
+            --bg-sidebar: #292A30;
+            --bg-card: #2C2C2E;
+            --border-subtle: #3A3A3C;
+            --selection-bg: #0060FA;
+            --text-primary: #FFFFFF;
+            --text-secondary: #CCCCCC;
+            --text-muted: #8F8F8F;
+            --accent-green: #32D74B;
+        }}
+
         body {{
-            font-family: system-ui, -apple-system, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
             display: flex;
             height: 100vh;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            background: var(--bg-app);
+            color: var(--text-secondary);
+            -webkit-font-smoothing: antialiased;
         }}
+
         .sidebar {{
-            width: 200px;
-            background: #252526;
-            border-right: 1px solid #3c3c3c;
+            width: 180px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-subtle);
             overflow-y: auto;
-            padding: 12px 0;
+            padding: 0;
+            flex-shrink: 0;
         }}
-        .sidebar h2 {{
-            color: #888;
+        .sidebar-header {{
+            padding: 8px 12px;
             font-size: 11px;
             font-weight: 600;
+            color: var(--text-muted);
             text-transform: uppercase;
-            padding: 8px 12px;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-subtle);
         }}
         .sidebar a {{
             display: block;
-            padding: 4px 12px;
-            color: #ccc;
+            padding: 3px 12px;
+            color: var(--text-secondary);
             text-decoration: none;
-            font-size: 12px;
-            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 11px;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
         }}
-        .sidebar a:hover {{ background: #2a2d2e; }}
-        .content {{
-            flex: 1;
-            overflow: auto;
-            padding: 32px;
-        }}
-        h1 {{ color: #569cd6; font-size: 24px; margin-bottom: 8px; }}
-        .subtitle {{ color: #808080; margin-bottom: 32px; }}
-        .stats {{
-            display: flex;
-            gap: 24px;
-            margin-bottom: 32px;
-        }}
-        .stat {{
-            background: #252526;
-            padding: 16px 24px;
-            border-radius: 8px;
-            border: 1px solid #3c3c3c;
-        }}
-        .stat-value {{ font-size: 32px; font-weight: bold; color: #4ec9b0; }}
-        .stat-label {{ font-size: 12px; color: #808080; margin-top: 4px; }}
-        .intro {{
-            background: #252526;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #3c3c3c;
-            line-height: 1.6;
-        }}
-        .intro h2 {{ color: #dcdcaa; font-size: 16px; margin-bottom: 12px; }}
-        .intro p {{ color: #9cdcfe; font-size: 14px; margin-bottom: 12px; }}
-        .intro code {{
-            background: #1e1e1e;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'SF Mono', Consolas, monospace;
-        }}
+        .sidebar a:hover {{ background: rgba(255,255,255,0.05); }}
         .search {{
-            padding: 8px 12px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-subtle);
         }}
         .search input {{
             width: 100%;
             padding: 4px 8px;
-            background: #3c3c3c;
-            border: 1px solid #555;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+        }}
+        .search input:focus {{
+            outline: none;
+            border-color: var(--selection-bg);
+        }}
+        .search input::placeholder {{ color: #666; }}
+
+        .content {{
+            flex: 1;
+            overflow: auto;
+            padding: 24px 32px;
+        }}
+
+        .header {{
+            margin-bottom: 24px;
+        }}
+        .header h1 {{
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }}
+        .header .subtitle {{
+            font-size: 12px;
+            color: var(--text-muted);
+        }}
+
+        .stats {{
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+        }}
+        .stat {{
+            background: var(--bg-card);
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+        }}
+        .stat-value {{
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--accent-green);
+            font-variant-numeric: tabular-nums;
+        }}
+        .stat-label {{
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }}
+
+        .intro {{
+            background: var(--bg-card);
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            line-height: 1.5;
+        }}
+        .intro h2 {{
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 10px;
+        }}
+        .intro p {{
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }}
+        .intro p:last-child {{ margin-bottom: 0; }}
+        .intro strong {{ color: var(--text-secondary); }}
+        .intro code {{
+            background: var(--bg-app);
+            padding: 2px 6px;
             border-radius: 3px;
-            color: #d4d4d4;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
             font-size: 11px;
         }}
     </style>
 </head>
 <body>
     <nav class="sidebar">
-        <h2>Files</h2>
+        <div class="sidebar-header">Files</div>
         <div class="search">
             <input type="text" placeholder="Filter..." oninput="filterFiles(this.value)">
         </div>
         <div id="file-list">{files_html}</div>
     </nav>
     <div class="content">
-        <h1>Disassembly Explorer</h1>
-        <p class="subtitle">{html.escape(binary_name)}</p>
+        <div class="header">
+            <h1>Disassembly Explorer</h1>
+            <p class="subtitle">{html.escape(binary_name)}</p>
+        </div>
         <div class="stats">
             <div class="stat">
                 <div class="stat-value">{total_files}</div>
@@ -731,10 +907,10 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
             </div>
         </div>
         <div class="intro">
-            <h2>Features</h2>
-            <p><strong>Source Order:</strong> View C code with expandable assembly blocks underneath.</p>
-            <p><strong>Machine Order:</strong> View assembly with expandable source context.</p>
-            <p><strong>For AI Agents:</strong> Each file is available as <code>filename.c.html</code> for independent fetching.</p>
+            <h2>View Modes</h2>
+            <p><strong>Source Order</strong> - C code with expandable assembly blocks underneath.</p>
+            <p><strong>Machine Order</strong> - Assembly with expandable source context.</p>
+            <p>Each file is available as <code>filename.c.html</code> for independent fetching.</p>
         </div>
     </div>
     <script>
