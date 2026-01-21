@@ -43,6 +43,12 @@
 #define DEBUG_ASSERT(cond) ({ if (!(cond)) *(volatile int *)0xDEAD = 0; (void)0; })
 #endif
 
+/* Row caching: on ARM64 this helps L1 cache, on 68000 it's overhead.
+ * Set to 0 to use direct board access instead of copying. */
+#ifndef USE_ROW_CACHE
+#define USE_ROW_CACHE 1
+#endif
+
 /* Timing instrumentation for profiling */
 #ifndef USE_TIMING
 #define USE_TIMING 0
@@ -147,13 +153,30 @@ typedef struct {
     LeaveMap leave_map_shadow_right_copy;  /* Save leave map for shadow right */
 
     /* Cache of current row */
+#if USE_ROW_CACHE
     MachineLetter row_letters[BOARD_DIM];
-    uint8_t row_bonuses[BOARD_DIM];
     CrossSet row_cross_sets[BOARD_DIM];
     int16_t row_cross_scores[BOARD_DIM];  /* In eighths (converted from board) */
-    uint8_t row_is_anchor[BOARD_DIM];
     CrossSet row_leftx[BOARD_DIM];    /* Left extension sets for current dir */
     CrossSet row_rightx[BOARD_DIM];   /* Right extension sets for current dir */
+#else
+    /* Pointer-based: point directly into board arrays, no copying */
+    const MachineLetter *row_letters;
+    const CrossSet *row_cross_sets;
+    const int16_t *row_cross_scores;
+    const CrossSet *row_leftx;
+    const CrossSet *row_rightx;
+#endif
+
+#if USE_BONUS_TRANSPOSE
+    /* Pointer-based: point directly into pre-transposed h_bonuses/v_bonuses */
+    const uint8_t *row_bonuses;
+#else
+    /* Array-based: compute transpose in cache_row */
+    uint8_t row_bonuses[BOARD_DIM];
+#endif
+    /* Anchors still need per-column computation */
+    uint8_t row_is_anchor[BOARD_DIM];
 
     /* ===== Shadow algorithm state ===== */
 
@@ -576,21 +599,35 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     Equity orig_perp = gen->shadow_perpendicular_additional_score;
     uint8_t orig_wordmul = gen->shadow_word_multiplier;
 
-    /* Save rack state */
-    Rack rack_copy;
-    memcpy(&rack_copy, &gen->rack, sizeof(Rack));
+    /* Save rack state using struct assignment (avoids memcpy call overhead).
+     * Use struct-level copy to avoid stack allocation. */
+    gen->rack_shadow_right_copy = gen->rack;
     uint32_t orig_rack_bits = gen->rack_bits;
 
-    /* Save descending tile scores */
-    Equity desc_scores_copy[RACK_SIZE];
-    memcpy(desc_scores_copy, gen->descending_tile_scores, sizeof(desc_scores_copy));
+    /* Save descending tile scores using struct-level copy.
+     * Use explicit long-word copies to avoid memcpy call overhead. */
+    {
+        uint32_t *dst = (uint32_t *)gen->descending_tile_scores_copy;
+        const uint32_t *src = (const uint32_t *)gen->descending_tile_scores;
+        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+        /* Last element (14 bytes = 3 longs + 1 word) */
+        gen->descending_tile_scores_copy[6] = gen->descending_tile_scores[6];
+    }
 
-    /* Save unrestricted multiplier state */
+    /* Save unrestricted multiplier state using struct-level copies */
     uint8_t orig_num_unrestricted = gen->num_unrestricted_multipliers;
-    UnrestrictedMultiplier xw_copy[RACK_SIZE];
-    uint16_t eff_copy[RACK_SIZE];
-    memcpy(xw_copy, gen->descending_cross_word_multipliers, sizeof(xw_copy));
-    memcpy(eff_copy, gen->descending_effective_letter_multipliers, sizeof(eff_copy));
+    {
+        uint32_t *dst = (uint32_t *)gen->desc_xw_muls_copy;
+        const uint32_t *src = (const uint32_t *)gen->descending_cross_word_multipliers;
+        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+        gen->desc_xw_muls_copy[6] = gen->descending_cross_word_multipliers[6];
+    }
+    {
+        uint32_t *dst = (uint32_t *)gen->desc_eff_letter_muls_copy;
+        const uint32_t *src = (const uint32_t *)gen->descending_effective_letter_multipliers;
+        dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+        gen->desc_eff_letter_muls_copy[6] = gen->descending_effective_letter_multipliers[6];
+    }
 
     int orig_right_col = gen->shadow_right_col;
     int orig_tiles_played = gen->tiles_played;
@@ -698,15 +735,33 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
     gen->shadow_word_multiplier = orig_wordmul;
 
     if (restricted_any) {
-        memcpy(&gen->rack, &rack_copy, sizeof(Rack));
+        /* Restore rack using struct assignment */
+        gen->rack = gen->rack_shadow_right_copy;
         gen->rack_bits = orig_rack_bits;
-        memcpy(gen->descending_tile_scores, desc_scores_copy, sizeof(desc_scores_copy));
+        /* Restore tile scores using long-word copies */
+        {
+            uint32_t *dst = (uint32_t *)gen->descending_tile_scores;
+            const uint32_t *src = (const uint32_t *)gen->descending_tile_scores_copy;
+            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+            gen->descending_tile_scores[6] = gen->descending_tile_scores_copy[6];
+        }
     }
 
     if (changed_multipliers) {
         gen->num_unrestricted_multipliers = orig_num_unrestricted;
-        memcpy(gen->descending_cross_word_multipliers, xw_copy, sizeof(xw_copy));
-        memcpy(gen->descending_effective_letter_multipliers, eff_copy, sizeof(eff_copy));
+        /* Restore multiplier arrays using long-word copies */
+        {
+            uint32_t *dst = (uint32_t *)gen->descending_cross_word_multipliers;
+            const uint32_t *src = (const uint32_t *)gen->desc_xw_muls_copy;
+            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+            gen->descending_cross_word_multipliers[6] = gen->desc_xw_muls_copy[6];
+        }
+        {
+            uint32_t *dst = (uint32_t *)gen->descending_effective_letter_multipliers;
+            const uint32_t *src = (const uint32_t *)gen->desc_eff_letter_muls_copy;
+            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+            gen->descending_effective_letter_multipliers[6] = gen->desc_eff_letter_muls_copy[6];
+        }
     }
 
     gen->shadow_right_col = orig_right_col;
@@ -1614,16 +1669,37 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
         rightx = gen->board->v_rightx;
     }
 
+#if USE_ROW_CACHE
+    /* Copy data from board arrays to local cache (benefits L1 cache on ARM64) */
     for (int col = 0; col < BOARD_DIM; col++) {
         int idx = base_idx + col;
-
         gen->row_letters[col] = letters[idx];
         gen->row_cross_sets[col] = cross_sets[idx];
-        gen->row_cross_scores[col] = cross_scores[idx];  /* Already in eighths */
+        gen->row_cross_scores[col] = cross_scores[idx];
         gen->row_leftx[col] = leftx[idx];
         gen->row_rightx[col] = rightx[idx];
+    }
+#else
+    /* Point directly into board arrays (faster on 68000 with no cache) */
+    gen->row_letters = &letters[base_idx];
+    gen->row_cross_sets = &cross_sets[base_idx];
+    gen->row_cross_scores = &cross_scores[base_idx];
+    gen->row_leftx = &leftx[base_idx];
+    gen->row_rightx = &rightx[base_idx];
+#endif
 
-        /* Bonuses need physical board coordinates */
+#if USE_BONUS_TRANSPOSE
+    /* Pointer-based bonus access: use pre-transposed arrays */
+    if (dir == DIR_HORIZONTAL) {
+        gen->row_bonuses = &gen->board->h_bonuses[base_idx];
+    } else {
+        gen->row_bonuses = &gen->board->v_bonuses[base_idx];
+    }
+#endif
+
+    /* Anchors always need per-column computation (depend on neighboring tiles) */
+    for (int col = 0; col < BOARD_DIM; col++) {
+        /* Get physical board coordinates for anchor checks */
         int board_row, board_col;
         if (dir == DIR_HORIZONTAL) {
             board_row = row;
@@ -1632,10 +1708,15 @@ static void cache_row(MoveGenState *gen, int row, int dir) {
             board_row = col;  /* Transposed: algorithm row = physical col */
             board_col = row;  /* Transposed: algorithm col = physical row */
         }
+
+#if !USE_BONUS_TRANSPOSE
+        /* Array-based: compute transposed bonus index */
         gen->row_bonuses[col] = gen->board->bonuses[board_row * BOARD_DIM + board_col];
+#endif
 
         /* Compute anchor status: empty square adjacent to a tile */
         gen->row_is_anchor[col] = 0;
+        int idx = base_idx + col;
         if (letters[idx] == ALPHABET_EMPTY_SQUARE_MARKER) {
             /* Check all 4 neighbors using h_letters (canonical view) */
             int has_neighbor = 0;

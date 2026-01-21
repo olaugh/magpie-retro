@@ -166,13 +166,90 @@ The shadow loop in `shadow_record` was optimized to only iterate `min(rack.total
 
 ## Priority Ranking
 
-| Priority | Task | Effort | Gain |
-|----------|------|--------|------|
-| 1 | Inline small memcpy calls | Medium | 3-5% |
-| 2 | Reduce go_on call overhead | Medium | 5-10% |
-| 3 | Hand-optimize GADDAG traversal | High | 5-10% |
-| 4 | Pre-compute unrestricted multiplier products | Medium | 1-2% |
-| 5 | Optimize remaining MULS in score_move | Low | 1% |
+| Priority | Task | Effort | Gain | Status |
+|----------|------|--------|------|--------|
+| 1 | Inline small memcpy calls | Medium | 3-5% | **DONE** |
+| 2 | Reduce go_on call overhead | Medium | 5-10% | Open |
+| 3 | Hand-optimize GADDAG traversal | High | 5-10% | Open |
+| 4 | Pre-compute unrestricted multiplier products | Medium | 1-2% | Open |
+| 5 | Optimize remaining MULS in score_move | Low | 1% | Open |
+
+---
+
+## Completed Optimizations
+
+### D. Inline memcpy in shadow_play_right
+
+**Problem**: `shadow_play_right` called memcpy 4 times for save and 4 times for restore, creating significant function call overhead on 68000.
+
+**Implementation**:
+- Replaced stack-allocated copy arrays with struct-level copies already in MoveGenState
+- Used struct assignment for Rack (28 bytes) instead of memcpy
+- Used explicit long-word (32-bit) copies for 14-byte arrays instead of memcpy
+
+**Result**: **~3% FASTER**
+- NWL23 100 games: 902,527 → 875,416 frames (3.0% improvement)
+- CSW24 100 games: 920,782 → 894,435 frames (2.9% improvement)
+- NWL23 10-seed regression: 99,921 → 97,333 frames (2.6% improvement)
+- CSW24 10-seed regression: 88,664 → 86,138 frames (2.8% improvement)
+
+**Analysis**: The optimization benefits from:
+- Avoiding memcpy function call overhead (JSR/RTS + stack frame setup)
+- Struct assignment compiles to efficient move instructions
+- Explicit long-word copies (3-4 MOVE.L) vs memcpy byte loop (28 or 14 iterations)
+- Using struct-level copies avoids stack allocation
+
+**Conclusion**: Confirmed that inlining small memcpy calls provides measurable speedup on 68000.
+
+---
+
+## Explored But Rejected Optimizations
+
+### A. Transposed Bonus Arrays (USE_BONUS_TRANSPOSE)
+
+**Hypothesis**: Pre-computing transposed bonus arrays (h_bonuses/v_bonuses like h_letters/v_letters) would enable pointer-based access in cache_row, avoiding per-column index computation.
+
+**Implementation**: Added h_bonuses[225] and v_bonuses[225] to Board struct, initialized in board_init(), and used pointer-based access in cache_row when USE_BONUS_TRANSPOSE=1.
+
+**Result**: **0.4% SLOWER** (100,313 vs 99,921 NWL23 Shadow frames)
+
+**Analysis**: The pointer-based approach adds overhead on 68000:
+- Extra instructions to load pointer to register and dereference
+- Larger Board struct (450 extra bytes)
+- Extra initialization cost
+
+**Conclusion**: Array-based index computation is more efficient than pointer indirection on 68000. Left as optional compile flag (default=0) for testing.
+
+### B. Separated Letter/Word Multiplier Arrays
+
+**Hypothesis**: Separating letter_mult and word_mult into distinct arrays would eliminate bit extraction overhead (shift and mask operations).
+
+**Analysis**: Given that transposed bonuses hurt performance, separated arrays would likely have similar results. The 68000 is efficient at nibble extraction:
+- `LSR.B #4` for upper nibble (letter_mult)
+- `AND.B #0x0F` for lower nibble (word_mult)
+
+**Conclusion**: Not implemented - expected to hurt performance based on pattern A.
+
+### C. Row Caching (USE_ROW_CACHE)
+
+**Hypothesis**: Copying board data to local arrays in cache_row is overhead on 68000 since there's no CPU cache to benefit.
+
+**Result**: **0.2% SLOWER** when disabled (99,921 vs 100,122 NWL23 Shadow frames)
+
+**Analysis**: Even without CPU cache, the data is accessed many times per row during traversal. The pointer indirection overhead exceeds the copy cost.
+
+**Conclusion**: Keep USE_ROW_CACHE=1 (default).
+
+---
+
+## Key Insight: Pointer Indirection on 68000
+
+On 68000, pointer-based access often hurts rather than helps:
+- Loading a pointer requires extra instructions
+- Address registers are scarce (A0-A7)
+- Computed array indexing can be folded into addressing modes
+
+Prefer array access with computed indices over pointer-based patterns.
 
 ---
 

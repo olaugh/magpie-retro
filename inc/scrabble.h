@@ -59,6 +59,13 @@ typedef enum {
     BONUS_CENTER /* Center star (also DW) */
 } BonusType;
 
+/* USE_BONUS_TRANSPOSE: when 1, add h_bonuses/v_bonuses arrays for pointer-based
+ * access in cache_row instead of computing transposed indices each time.
+ * Default 0 to match baseline. Override with -DUSE_BONUS_TRANSPOSE=1. */
+#ifndef USE_BONUS_TRANSPOSE
+#define USE_BONUS_TRANSPOSE 0
+#endif
+
 /* Cross-set: bitmap of valid letters for a square */
 typedef uint32_t CrossSet;
 #define TRIVIAL_CROSS_SET 0xFFFFFFFE  /* All letters valid (bit 0 unused) */
@@ -105,7 +112,15 @@ typedef struct {
     /* ---------------------------------------------------------
      * SHARED DATA (not direction-specific)
      * --------------------------------------------------------- */
-    uint8_t bonuses[BOARD_SIZE];         /* Bonus squares (DL, TL, DW, TW) */
+    uint8_t bonuses[BOARD_SIZE];         /* Bonus squares (DL, TL, DW, TW) - row major */
+
+#if USE_BONUS_TRANSPOSE
+    /* Transposed bonus arrays for pointer-based access in cache_row.
+     * h_bonuses is row-major (same as bonuses), v_bonuses is transposed. */
+    uint8_t h_bonuses[BOARD_SIZE];       /* Horizontal view bonuses */
+    uint8_t v_bonuses[BOARD_SIZE];       /* Vertical view bonuses (transposed) */
+#endif
+
     uint8_t tiles_played;
 } Board;
 
