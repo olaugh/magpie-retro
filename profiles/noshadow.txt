@@ -1,0 +1,198 @@
+Analysis of sampling test_batch (pid 42562) every 10 milliseconds
+Process:         test_batch [42562]
+Path:            /Users/USER/*/test_batch
+Load Address:    0x100ae0000
+Identifier:      test_batch
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  zsh [42550]
+Target Type:     live task
+
+Date/Time:       2026-01-20 14:45:02.221 -0800
+Launch Time:     2026-01-20 14:45:02.169 -0800
+OS Version:      macOS 15.7.3 (24G419)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+----
+
+Call graph:
+    30 Thread_7925674   DispatchQueue_1: com.apple.main-thread  (serial)
+      30 start  (in dyld) + 6076  [0x190d1eb98]
+        30 main  (in test_batch) + 520  [0x100ae177c]
+          15 generate_moves  (in test_batch) + 568  [0x100ae3cb4]
+          + 9 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! 8 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : 6 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : | 6 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   3 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |   + 1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   + ! 1 recursive_gen  (in test_batch) + 336  [0x100ae42a0]
+          + ! : |   + 1 go_on  (in test_batch) + 204  [0x100ae4500]
+          + ! : |   + 1 recursive_gen  (in test_batch) + 728  [0x100ae4428]
+          + ! : |   3 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! : |     2 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |     ! 2 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |     !   1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |     !   : 1 recursive_gen  (in test_batch) + 280  [0x100ae4268]
+          + ! : |     !   1 go_on  (in test_batch) + 116  [0x100ae44a8]
+          + ! : |     1 go_on  (in test_batch) + 664  [0x100ae46cc]
+          + ! : 1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : | 1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |   1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : |     1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |       1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : |         1 recursive_gen  (in test_batch) + 280  [0x100ae4268]
+          + ! : 1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! :   1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! :     1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! :       1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! :         1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! :           1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! :             1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! :               1 go_on  (in test_batch) + 596  [0x100ae4688]
+          + ! 1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !   1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + !     1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !       1 go_on  (in test_batch) + 664  [0x100ae46cc]
+          + 6 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          +   6 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     4 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     : 4 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :   3 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     :   | 2 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :   | + 1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     :   | + ! 1 go_on  (in test_batch) + 52  [0x100ae4468]
+          +     :   | + 1 recursive_gen  (in test_batch) + 316  [0x100ae428c]
+          +     :   | 1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          +     :   |   1 go_on  (in test_batch) + 0  [0x100ae4434]
+          +     :   1 recursive_gen  (in test_batch) + 316  [0x100ae428c]
+          +     2 recursive_gen  (in test_batch) + 316,704  [0x100ae428c,0x100ae4410]
+          12 generate_moves  (in test_batch) + 416  [0x100ae3c1c]
+          + 8 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! 6 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : 2 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : | 1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : | + 1 recursive_gen  (in test_batch) + 708  [0x100ae4414]
+          + ! : | 1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |   1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : |     1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |       1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : |         1 recursive_gen  (in test_batch) + 708  [0x100ae4414]
+          + ! : 2 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : | 2 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |   + 1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   +   1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! : |   +     1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   +       1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |   +         1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   +           1 recursive_gen  (in test_batch) + 316  [0x100ae428c]
+          + ! : |   1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! : |     1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + ! : |       1 recursive_gen  (in test_batch) + 708  [0x100ae4414]
+          + ! : 1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + ! : | 1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |   1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |     1 go_on  (in test_batch) + 564  [0x100ae4668]
+          + ! : |       1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + ! : |         1 go_on  (in test_batch) + 596  [0x100ae4688]
+          + ! : 1 recursive_gen  (in test_batch) + 504  [0x100ae4348]
+          + ! 2 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !   1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !   | 1 recursive_gen  (in test_batch) + 316  [0x100ae428c]
+          + !   1 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          + !     1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !       1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + !         1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !           1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + !             1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !               1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          + !                 1 go_on  (in test_batch) + 636  [0x100ae46b0]
+          + !                   1 recursive_gen  (in test_batch) + 280  [0x100ae4268]
+          + 4 recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+          +   4 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     3 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     : 3 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :   3 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     :     2 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :     | 1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     :     | + 1 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :     | +   1 recursive_gen  (in test_batch) + 444  [0x100ae430c]
+          +     :     | +     1 go_on  (in test_batch) + 564  [0x100ae4668]
+          +     :     | +       1 recursive_gen  (in test_batch) + 180  [0x100ae4204]
+          +     :     | 1 recursive_gen  (in test_batch) + 328  [0x100ae4298]
+          +     :     1 go_on  (in test_batch) + 492  [0x100ae4620]
+          +     1 go_on  (in test_batch) + 520  [0x100ae463c]
+          +       1 record_move  (in test_batch) + 24  [0x100ae470c]
+          1 generate_moves  (in test_batch) + 212  [0x100ae3b50]
+          + 1 leave_map_init  (in test_batch) + 516  [0x100ae4fc8]
+          +   1 populate_leave_values  (in test_batch) + 256  [0x100ae50f8]
+          +     1 populate_leave_values  (in test_batch) + 256  [0x100ae50f8]
+          +       1 populate_leave_values  (in test_batch) + 256  [0x100ae50f8]
+          +         1 populate_leave_values  (in test_batch) + 256  [0x100ae50f8]
+          +           1 populate_leave_values  (in test_batch) + 56  [0x100ae5030]
+          +             1 klv_get_word_index  (in test_batch) + 520  [0x100ae4cf0]
+          1 generate_moves  (in test_batch) + 852  [0x100ae3dd0]
+          + 1 klv_get_leave_value  (in test_batch) + 28  [0x100ae4d8c]
+          +   1 klv_get_word_index  (in test_batch) + 572  [0x100ae4d24]
+          1 generate_moves  (in test_batch) + 748  [0x100ae3d68]
+
+Total number in stack (recursive counted multiple, when >=5):
+        27       recursive_gen  (in test_batch) + 444  [0x100ae430c]
+        23       go_on  (in test_batch) + 564  [0x100ae4668]
+        17       go_on  (in test_batch) + 636  [0x100ae46b0]
+        16       recursive_gen  (in test_batch) + 0  [0x100ae4150]
+        9       go_on  (in test_batch) + 0  [0x100ae4434]
+        9       recursive_gen  (in test_batch) + 636  [0x100ae43cc]
+
+Sort by top of stack, same collapsed (when >= 5):
+        recursive_gen  (in test_batch)        17
+        go_on  (in test_batch)        9
+
+Binary Images:
+       0x100ae0000 -        0x101257fff +test_batch (0) <0B82ACCF-72F6-3847-8909-005E25B99FE3> /Users/*/test_batch
+       0x190cc4000 -        0x190d17893  libobjc.A.dylib (940.4) <E6F30EB4-FACF-3381-AE46-10E556F1FC39> /usr/lib/libobjc.A.dylib
+       0x190d18000 -        0x190db357b  dyld (1.0.0 - 1286.10) <E4E5CD37-5339-3136-B2C5-0C80F0720C26> /usr/lib/dyld
+       0x190db4000 -        0x190db7168  libsystem_blocks.dylib (96) <EFADF6A6-C85B-37E9-9514-8E7A1EBAC882> /usr/lib/system/libsystem_blocks.dylib
+       0x190db8000 -        0x190e028ff  libxpc.dylib (2894.140.12.700.1) <B7303BD5-2EAD-3A97-8419-5A1454C5E513> /usr/lib/system/libxpc.dylib
+       0x190e03000 -        0x190e1e7ff  libsystem_trace.dylib (1643.120.5) <9DBBEE92-6C08-39F7-A05E-5054A79D28F6> /usr/lib/system/libsystem_trace.dylib
+       0x190e1f000 -        0x190ebd3b7  libcorecrypto.dylib (1736.140.2) <00D81A3B-8152-35CF-B1AE-7364B4832072> /usr/lib/system/libcorecrypto.dylib
+       0x190ebe000 -        0x190f0506f  libsystem_malloc.dylib (715.140.5) <3CE1E59C-91C8-3259-93D8-7DED66842979> /usr/lib/system/libsystem_malloc.dylib
+       0x190f06000 -        0x190f4c75f  libdispatch.dylib (1521.140.2) <63A54CE1-2AB6-3673-82E4-D8489D811475> /usr/lib/system/libdispatch.dylib
+       0x190f4d000 -        0x190f4fd1b  libsystem_featureflags.dylib (97) <9AF1C2C7-1C15-3F0E-9C0F-4524BD4EB4CF> /usr/lib/system/libsystem_featureflags.dylib
+       0x190f50000 -        0x190fd11f7  libsystem_c.dylib (1698.140.3.700.2) <E098CB59-2C56-395C-ADE1-6EF590E61199> /usr/lib/system/libsystem_c.dylib
+       0x190fd2000 -        0x19105eff7  libc++.1.dylib (1900.181) <EB94C9FE-91DA-3E9F-9C45-7B476FEAAEAE> /usr/lib/libc++.1.dylib
+       0x19105f000 -        0x19107cfff  libc++abi.dylib (1900.181) <BC670272-BF32-38AC-AE3F-F06EDA80BE30> /usr/lib/libc++abi.dylib
+       0x19107d000 -        0x1910b8663  libsystem_kernel.dylib (11417.140.69.705.2) <1D4FFD44-8926-3746-924E-DEEF5B777588> /usr/lib/system/libsystem_kernel.dylib
+       0x1910b9000 -        0x1910c5a77  libsystem_pthread.dylib (536.0.0.701.1) <022DC315-CF35-38DA-939E-03800B5BEFF2> /usr/lib/system/libsystem_pthread.dylib
+       0x1910c6000 -        0x1910f5ba3  libdyld.dylib (1286.10) <E4FE35C9-8AEE-3728-89B9-89A64239ED74> /usr/lib/system/libdyld.dylib
+       0x1910f6000 -        0x1910fde0b  libsystem_platform.dylib (349.140.6) <C26E58A4-34A1-3F9C-BDBC-EBC34426633A> /usr/lib/system/libsystem_platform.dylib
+       0x1910fe000 -        0x19112dd83  libsystem_info.dylib (597.0.0.701.2) <3B2CAC89-F7B9-3111-9EB6-84A87EEBBAD7> /usr/lib/system/libsystem_info.dylib
+       0x194bc0000 -        0x194bca397  libsystem_darwin.dylib (1698.140.3.700.2) <62C85958-8310-3625-ADF0-DCD58D08BEB9> /usr/lib/system/libsystem_darwin.dylib
+       0x195022000 -        0x195033feb  libsystem_notify.dylib (342) <CA2AAD14-C438-30E8-9699-5A947E2DF021> /usr/lib/system/libsystem_notify.dylib
+       0x197025000 -        0x19703fe8f  libsystem_networkextension.dylib (2063.140.6) <5C0C1505-266B-3544-B970-BE347DAF2AAF> /usr/lib/system/libsystem_networkextension.dylib
+       0x1970bc000 -        0x1970d3fdb  libsystem_asl.dylib (402) <0574F75C-FB20-3114-8C16-E17D821FFCBD> /usr/lib/system/libsystem_asl.dylib
+       0x198c19000 -        0x198c213a7  libsystem_symptoms.dylib (2022.140.4) <FDBF294D-E745-3E89-B474-DADA17135BEE> /usr/lib/system/libsystem_symptoms.dylib
+       0x19c468000 -        0x19c49847b  libsystem_containermanager.dylib (689.100.6.700.1) <33FB585C-7D34-3F5D-97A0-501C5FAC3F11> /usr/lib/system/libsystem_containermanager.dylib
+       0x19d6d2000 -        0x19d6d65df  libsystem_configuration.dylib (1351.140.5.700.1) <17DACC61-AB01-3605-B2C8-618E4781B649> /usr/lib/system/libsystem_configuration.dylib
+       0x19d6d7000 -        0x19d6dd4ef  libsystem_sandbox.dylib (2401.140.15.700.3) <CDEA0D5C-056D-308C-8544-C36BA2B389B1> /usr/lib/system/libsystem_sandbox.dylib
+       0x19e6e2000 -        0x19e6e4fe3  libquarantine.dylib (181.120.2) <B274436C-379E-3E0F-B8E2-A7AA69E46E73> /usr/lib/system/libquarantine.dylib
+       0x19edf8000 -        0x19edfeee7  libsystem_coreservices.dylib (178.6.6) <985B59F1-7321-37D0-8182-27B82BD7D1B1> /usr/lib/system/libsystem_coreservices.dylib
+       0x19f276000 -        0x19f2b32b7  libsystem_m.dylib (3291.100.4) <5F5F2F2E-557D-3441-8566-8B2009538753> /usr/lib/system/libsystem_m.dylib
+       0x19f2b5000 -        0x19f2b84e7  libmacho.dylib (1024.3) <CD255FF9-4E35-347A-B7E9-304517D3A871> /usr/lib/system/libmacho.dylib
+       0x19f2d2000 -        0x19f2df5ef  libcommonCrypto.dylib (600035) <65A3AFCF-9611-35C1-9697-8CF5409F0C83> /usr/lib/system/libcommonCrypto.dylib
+       0x19f2e0000 -        0x19f2e9ad7  libunwind.dylib (1900.125) <FA046DDB-1518-353B-A9B6-CD622328B746> /usr/lib/system/libunwind.dylib
+       0x19f2f2000 -        0x19f2fc69f  libcopyfile.dylib (224) <459F7A49-1FEF-329E-8FC0-0A5FF6FBD902> /usr/lib/system/libcopyfile.dylib
+       0x19f2fd000 -        0x19f30098f  libcompiler_rt.dylib (103.3) <7720A496-7B7A-33C1-B7F3-9E8B7DEA0622> /usr/lib/system/libcompiler_rt.dylib
+       0x19f301000 -        0x19f305a1b  libsystem_collections.dylib (1698.140.3.700.2) <04F3AE1A-0F6D-3F68-84E0-EAFFBC0CE0A5> /usr/lib/system/libsystem_collections.dylib
+       0x19f306000 -        0x19f3092c7  libsystem_secinit.dylib (153.140.2) <63965812-869C-3C3C-A950-FA563CE8EB1E> /usr/lib/system/libsystem_secinit.dylib
+       0x19f30a000 -        0x19f30cb6f  libremovefile.dylib (81) <E34EF2FA-1C55-3222-B1A2-CEEEC4B02F3D> /usr/lib/system/libremovefile.dylib
+       0x19f30d000 -        0x19f30df27  libkeymgr.dylib (31) <EE1B8708-02B1-385D-B648-E87B4D25391B> /usr/lib/system/libkeymgr.dylib
+       0x19f30e000 -        0x19f316d57  libsystem_dnssd.dylib (2600.140.3) <EE79FBDA-E408-3D4C-A0EE-C56BE107CC06> /usr/lib/system/libsystem_dnssd.dylib
+       0x19f317000 -        0x19f31c0b3  libcache.dylib (95) <4242CCFB-F060-3493-B555-C26217B4F080> /usr/lib/system/libcache.dylib
+       0x19f31d000 -        0x19f31eca3  libSystem.B.dylib (1351) <068263F7-CF15-3E1C-A305-5DF8F9C51AD5> /usr/lib/libSystem.B.dylib
+       0x27871e000 -        0x278725109  libRosetta.dylib (349) <CD13AF03-27E5-387A-8DF1-7016C957167A> /usr/lib/libRosetta.dylib
+       0x279b49000 -        0x279b4cdeb  libsystem_darwindirectory.dylib (122) <8627B2A8-CE68-3F9A-B3E8-2F4E4E35CF66> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x279b4d000 -        0x279b54523  libsystem_eligibility.dylib (181.140.5) <B76C1C04-8001-3113-BE6E-FDDEA1118104> /usr/lib/system/libsystem_eligibility.dylib
+       0x279b55000 -        0x279b5a6c5  libsystem_sanitizers.dylib (19) <6143DE0A-A328-3649-AF7D-8FC8781B86E7> /usr/lib/system/libsystem_sanitizers.dylib

@@ -2,6 +2,23 @@
 build/
 out/
 
+# Bazel
+MODULE.bazel.lock
+bazel-bin
+bazel-magpie-genesis
+bazel-out
+bazel-testlogs
+
+# Generated data
+nvram/
+
+# Generated headers
+inc/mult_lut.h
+
+# Debug files
+debug_turn
+debug_turn.c
+
 # Generated files
 font_browser.html
 

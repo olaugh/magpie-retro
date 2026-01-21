@@ -1,0 +1,18 @@
+# Tools for Scrabble Genesis
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "split_asm.py",
+    "disassembly.bzl",
+    "kwg2c.py",
+    "klv2c.py",
+    "klv2_to_klv16.py",
+])
+
+# Python runtime for tools
+py_binary(
+    name = "split_asm",
+    srcs = ["split_asm.py"],
+    python_version = "PY3",
+)

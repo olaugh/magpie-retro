@@ -9,6 +9,7 @@
 #include <profiler.h>
 #include "scrabble_symbols.h"
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <iomanip>
@@ -21,7 +22,7 @@
 namespace {
 
 constexpr int MAX_GAME_FRAMES = 30000;
-constexpr int NUM_GAMES = 4;
+constexpr int DEFAULT_NUM_GAMES = 4;
 
 // Buffer sizes for nm output parsing
 constexpr size_t NM_OUTPUT_LINE_BUFFER_SIZE = 512;
@@ -104,9 +105,10 @@ struct AggregatedFuncStats {
 };
 
 void RunParallelProfile(const char* rom_path, const char* elf_path,
-                        const char* name, uint32_t sample_rate = 1) {
+                        const char* name, uint32_t sample_rate = 1,
+                        int num_games = DEFAULT_NUM_GAMES) {
     std::cout << "\n======================================" << std::endl;
-    std::cout << name << " - " << NUM_GAMES << " Game Parallel Profile" << std::endl;
+    std::cout << name << " - " << num_games << " Game Parallel Profile" << std::endl;
     std::cout << "======================================" << std::endl;
 
     // Load symbols once to get function names for reporting
@@ -124,10 +126,10 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     std::cout << std::endl;
 
     // Create pipes and fork children
-    std::vector<int> read_fds(NUM_GAMES);
-    std::vector<pid_t> pids(NUM_GAMES);
+    std::vector<int> read_fds(num_games);
+    std::vector<pid_t> pids(num_games);
 
-    for (int i = 0; i < NUM_GAMES; i++) {
+    for (int i = 0; i < num_games; i++) {
         int pipefd[2];
         if (pipe(pipefd) < 0) {
             perror("pipe");
@@ -156,7 +158,7 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
     uint64_t grand_total_cycles = 0;
     std::map<uint32_t, AggregatedFuncStats> aggregated_stats;
 
-    for (int i = 0; i < NUM_GAMES; i++) {
+    for (int i = 0; i < num_games; i++) {
         // Wait for child
         int status;
         if (waitpid(pids[i], &status, 0) < 0) {
@@ -210,11 +212,11 @@ void RunParallelProfile(const char* rom_path, const char* elf_path,
 
     // Print summary
     std::cout << "\n--- Summary ---" << std::endl;
-    std::cout << "Total games: " << NUM_GAMES << std::endl;
+    std::cout << "Total games: " << num_games << std::endl;
     std::cout << "Total frames: " << total_frames << std::endl;
-    std::cout << "Avg frames/game: " << static_cast<double>(total_frames) / NUM_GAMES << std::endl;
+    std::cout << "Avg frames/game: " << static_cast<double>(total_frames) / num_games << std::endl;
     std::cout << "Total cycles: " << grand_total_cycles << std::endl;
-    std::cout << "Avg cycles/game: " << static_cast<double>(grand_total_cycles) / NUM_GAMES << std::endl;
+    std::cout << "Avg cycles/game: " << static_cast<double>(grand_total_cycles) / num_games << std::endl;
 
     // Build sorted report by cycles
     struct FuncReport {
@@ -338,6 +340,112 @@ TEST(ScrabbleProfile, ShadowVsNoShadowSampled10) {
 TEST(ScrabbleProfile, ShadowVsNoShadowSampled100) {
     RunParallelProfile(ROM_NWL23_SHADOW, "build/nwl23-shadow/scrabble.elf", "NWL23 Shadow", 100);
     RunParallelProfile(ROM_NWL23_NOSHADOW, "build/nwl23-noshadow/scrabble.elf", "NWL23 NoShadow", 100);
+}
+
+// CSW24 profiling with 50 games at 1/100 sampling
+TEST(ScrabbleProfile, CSW24ShadowVsNoShadowSampled100) {
+    RunParallelProfile(ROM_CSW24_SHADOW, "build/csw24-shadow/scrabble.elf", "CSW24 Shadow", 100, 50);
+    RunParallelProfile(ROM_CSW24_NOSHADOW, "build/csw24-noshadow/scrabble.elf", "CSW24 NoShadow", 100, 50);
+}
+
+// ---------------------------------------------------------------------------
+// Address Histogram Export (for disassembly viewer integration)
+// ---------------------------------------------------------------------------
+
+// Run a single game and export per-address cycle histogram to JSON
+void RunAddressHistogramProfile(const char* rom_path, const char* elf_path,
+                                 const char* output_path, const char* name,
+                                 uint32_t sample_rate = 1, int game_seed = 0) {
+    std::cout << "\n======================================" << std::endl;
+    std::cout << name << " - Address Histogram Export" << std::endl;
+    std::cout << "======================================" << std::endl;
+    std::cout << "Seed: " << game_seed << std::endl;
+    std::cout << "Sample rate: 1/" << sample_rate << std::endl;
+    std::cout << "Output: " << output_path << std::endl;
+
+    GX::Emulator emu;
+    if (!emu.LoadRom(rom_path)) {
+        std::cerr << "Failed to load ROM: " << rom_path << std::endl;
+        return;
+    }
+
+    GX::Profiler profiler;
+    int sym_count = profiler.LoadSymbolsFromELF(elf_path);
+    if (sym_count <= 0) {
+        std::cerr << "Failed to load symbols from: " << elf_path << std::endl;
+        return;
+    }
+    std::cout << "Loaded " << sym_count << " symbols" << std::endl;
+
+    // Set game seed
+    emu.WriteLong(Scrabble::test_seed_override, game_seed);
+
+    // Start profiling with address histogram collection enabled
+    GX::ProfileOptions opts;
+    opts.mode = GX::ProfileMode::Simple;
+    opts.sample_rate = sample_rate;
+    opts.collect_address_histogram = true;
+
+    std::cout << "Running game..." << std::flush;
+    profiler.Start(opts);
+    int result = emu.RunUntilMemoryEquals(Scrabble::test_game_over, 1, MAX_GAME_FRAMES);
+    profiler.Stop();
+
+    if (result < 0) {
+        std::cerr << " TIMEOUT" << std::endl;
+        return;
+    }
+
+    // Print game result
+    int16_t score_p0 = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player0_score));
+    int16_t score_p1 = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score));
+    uint32_t frames = emu.ReadLong(Scrabble::total_frames);
+
+    std::cout << " done" << std::endl;
+    std::cout << "Score: " << score_p0 << "-" << score_p1 << std::endl;
+    std::cout << "Frames: " << frames << std::endl;
+    std::cout << "Total cycles: " << profiler.GetTotalCycles() << std::endl;
+    std::cout << "Unique addresses: " << profiler.GetAddressHistogram().size() << std::endl;
+
+    // Write histogram to JSON
+    if (profiler.WriteAddressHistogram(output_path)) {
+        std::cout << "Wrote histogram to: " << output_path << std::endl;
+    } else {
+        std::cerr << "Failed to write histogram to: " << output_path << std::endl;
+    }
+
+    // Also print function report
+    profiler.PrintReport(std::cout, 20);
+}
+
+// Export address histogram for CSW24 Shadow (1 game, seed 0, 1:1 sampling)
+TEST(ScrabbleProfile, ExportCSW24ShadowHistogram) {
+    // Use TEST_UNDECLARED_OUTPUTS_DIR if available, else /tmp
+    const char* output_dir = std::getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    std::string output_path = output_dir
+        ? std::string(output_dir) + "/csw24-shadow.profile.json"
+        : "/tmp/csw24-shadow.profile.json";
+
+    RunAddressHistogramProfile(
+        ROM_CSW24_SHADOW,
+        "build/csw24-shadow-debug/scrabble.elf",
+        output_path.c_str(),
+        "CSW24 Shadow",
+        1,   // sample_rate = 1 (every instruction)
+        0    // seed = 0
+    );
+}
+
+// Export address histogram for NWL23 Shadow
+TEST(ScrabbleProfile, ExportNWL23ShadowHistogram) {
+    RunAddressHistogramProfile(
+        ROM_NWL23_SHADOW,
+        "build/nwl23-shadow-debug/scrabble.elf",
+        "profiles/nwl23-shadow.profile.json",
+        "NWL23 Shadow",
+        1,   // sample_rate = 1
+        0    // seed = 0
+    );
 }
 
 } // namespace

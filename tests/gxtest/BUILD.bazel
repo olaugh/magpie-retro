@@ -45,12 +45,21 @@ cc_test(
     data = [
         "//:out/scrabble-nwl23-shadow.bin",
         "//:out/scrabble-nwl23-noshadow.bin",
+        "//:out/scrabble-csw24-shadow.bin",
+        "//:out/scrabble-csw24-noshadow.bin",
         "//:build/nwl23-shadow/scrabble.elf",
         "//:build/nwl23-noshadow/scrabble.elf",
+        "//:build/csw24-shadow/scrabble.elf",
+        "//:build/csw24-noshadow/scrabble.elf",
+        # Debug ELFs with DWARF symbols (for address histogram export)
+        "//:build/nwl23-shadow-debug/scrabble.elf",
+        "//:build/csw24-shadow-debug/scrabble.elf",
     ],
     defines = [
         'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
         'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
+        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
     ],
     # Manual tag excludes this from `bazel test //...` - must be run explicitly
     tags = ["manual"],
