@@ -1255,8 +1255,17 @@ static int is_better_move(Equity new_equity, int16_t new_score,
 static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     gen->move_count++;
 
-    /* Calculate final score (already in eighths - tile scores pre-multiplied) */
-    int16_t score = gen->main_word_score * gen->word_multiplier + gen->cross_score;
+    /* Accumulated word multiplier can be 1, 2, 3, 4, or 9 (6 is impossible,
+     * 27 is unlikely). Use adds for common cases; 4 and 9 are rare. */
+    int16_t main_word_contrib;
+    int16_t mws = gen->main_word_score;
+    switch (gen->word_multiplier) {
+    case 1:  main_word_contrib = mws; break;
+    case 2:  main_word_contrib = mws + mws; break;
+    case 3:  main_word_contrib = mws + mws + mws; break;
+    default: main_word_contrib = mws * gen->word_multiplier; break;
+    }
+    int16_t score = main_word_contrib + gen->cross_score;
 
     /* Add bingo bonus for using all 7 tiles */
     if (gen->tiles_played == RACK_SIZE) {
