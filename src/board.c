@@ -8,35 +8,38 @@
 /* From libc.c */
 extern void *memset(void *s, int c, unsigned long n);
 
-/* Standard Scrabble tile scores */
+/* Convert points to eighths for equity calculation */
+#define TO_EIGHTHS(x) ((x) * 8)
+
+/* Tile scores in eighths (pre-multiplied by 8 for equity calculation) */
 const uint8_t TILE_SCORES[ALPHABET_SIZE] = {
-    0,  /* Blank */
-    1,  /* A */
-    3,  /* B */
-    3,  /* C */
-    2,  /* D */
-    1,  /* E */
-    4,  /* F */
-    2,  /* G */
-    4,  /* H */
-    1,  /* I */
-    8,  /* J */
-    5,  /* K */
-    1,  /* L */
-    3,  /* M */
-    1,  /* N */
-    1,  /* O */
-    3,  /* P */
-    10, /* Q */
-    1,  /* R */
-    1,  /* S */
-    1,  /* T */
-    1,  /* U */
-    4,  /* V */
-    4,  /* W */
-    8,  /* X */
-    4,  /* Y */
-    10  /* Z */
+    TO_EIGHTHS(0),   /* Blank */
+    TO_EIGHTHS(1),   /* A */
+    TO_EIGHTHS(3),   /* B */
+    TO_EIGHTHS(3),   /* C */
+    TO_EIGHTHS(2),   /* D */
+    TO_EIGHTHS(1),   /* E */
+    TO_EIGHTHS(4),   /* F */
+    TO_EIGHTHS(2),   /* G */
+    TO_EIGHTHS(4),   /* H */
+    TO_EIGHTHS(1),   /* I */
+    TO_EIGHTHS(8),   /* J */
+    TO_EIGHTHS(5),   /* K */
+    TO_EIGHTHS(1),   /* L */
+    TO_EIGHTHS(3),   /* M */
+    TO_EIGHTHS(1),   /* N */
+    TO_EIGHTHS(1),   /* O */
+    TO_EIGHTHS(3),   /* P */
+    TO_EIGHTHS(10),  /* Q */
+    TO_EIGHTHS(1),   /* R */
+    TO_EIGHTHS(1),   /* S */
+    TO_EIGHTHS(1),   /* T */
+    TO_EIGHTHS(1),   /* U */
+    TO_EIGHTHS(4),   /* V */
+    TO_EIGHTHS(4),   /* W */
+    TO_EIGHTHS(8),   /* X */
+    TO_EIGHTHS(4),   /* Y */
+    TO_EIGHTHS(10)   /* Z */
 };
 
 /* Standard Scrabble tile counts */

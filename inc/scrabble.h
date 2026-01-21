@@ -88,7 +88,7 @@ typedef struct {
      * --------------------------------------------------------- */
     uint8_t  h_letters[BOARD_SIZE];      /* Tiles on board */
     CrossSet h_cross_sets[BOARD_SIZE];   /* Cross-sets for horizontal plays */
-    int8_t   h_cross_scores[BOARD_SIZE]; /* Cross-word scores for horizontal */
+    int16_t  h_cross_scores[BOARD_SIZE]; /* Cross-word scores for horizontal (in eighths) */
     CrossSet h_leftx[BOARD_SIZE];        /* Left extension sets */
     CrossSet h_rightx[BOARD_SIZE];       /* Right extension sets */
 
@@ -98,7 +98,7 @@ typedef struct {
      * --------------------------------------------------------- */
     uint8_t  v_letters[BOARD_SIZE];      /* Tiles (transposed) */
     CrossSet v_cross_sets[BOARD_SIZE];   /* Cross-sets for vertical plays */
-    int8_t   v_cross_scores[BOARD_SIZE]; /* Cross-word scores for vertical */
+    int16_t  v_cross_scores[BOARD_SIZE]; /* Cross-word scores for vertical (in eighths) */
     CrossSet v_leftx[BOARD_SIZE];        /* Left extension sets (transposed) */
     CrossSet v_rightx[BOARD_SIZE];       /* Right extension sets (transposed) */
 

@@ -37,17 +37,18 @@ struct ExpectedResult {
 };
 
 // Expected results for seeds 0-9 (scores must match between shadow/noshadow)
+// Frame counts updated for MULT_SMALL optimization (word_mult and letter_mult)
 constexpr ExpectedResult NWL23_EXPECTED[NUM_SEEDS] = {
-    {431, 467, 14582, 14371},  // Seed 0
-    {456, 463,  9114,  9023},  // Seed 1
-    {620, 344,  5897,  5948},  // Seed 2
-    {433, 411, 10222,  9693},  // Seed 3
-    {415, 451,  6848,  5845},  // Seed 4
-    {361, 458, 11963, 12763},  // Seed 5
-    {365, 506, 10144,  9784},  // Seed 6
-    {522, 440, 12675, 12430},  // Seed 7
-    {569, 308,  9198, 14683},  // Seed 8
-    {406, 483, 11998, 11832},  // Seed 9
+    {431, 467, 14195, 13944},  // Seed 0
+    {456, 463,  8901,  8768},  // Seed 1
+    {620, 344,  5760,  5780},  // Seed 2
+    {433, 411,  9978,  9423},  // Seed 3
+    {415, 451,  6698,  5688},  // Seed 4
+    {361, 458, 11695, 12413},  // Seed 5
+    {365, 506,  9938,  9532},  // Seed 6
+    {522, 440, 12382, 12090},  // Seed 7
+    {569, 308,  8997, 14280},  // Seed 8
+    {406, 483, 11727, 11516},  // Seed 9
 };
 
 // ---------------------------------------------------------------------------
@@ -74,8 +75,9 @@ void RunGameToFd(const char* rom_path, uint32_t seed, int write_fd) {
         // Run until game completes
         int frames = emu.RunUntilMemoryEquals(Scrabble::test_game_over, 1, MAX_GAME_FRAMES);
         if (frames >= 0) {
-            result.p0_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player0_score));
-            result.p1_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score));
+            // Scores are stored in eighths (×8); convert to display points
+            result.p0_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player0_score)) >> 3;
+            result.p1_score = static_cast<int16_t>(emu.ReadWord(Scrabble::test_player1_score)) >> 3;
             result.frames = emu.ReadLong(Scrabble::total_frames);
             result.completed = true;
         }

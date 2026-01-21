@@ -155,7 +155,7 @@ int kwg_is_valid_word(const uint32_t *kwg, const MachineLetter *letters, int cou
 CrossSet compute_cross_set(const uint32_t *kwg,
                            const MachineLetter *prefix, int prefix_len,
                            const MachineLetter *suffix, int suffix_len,
-                           int8_t *cross_score);
+                           int16_t *cross_score);
 
 /*
  * Compute extension sets for a position given left and right tiles
