@@ -4,6 +4,9 @@ const ROMS = {
     csw24: { name: 'CSW24 (International)', file: 'play/roms/csw24-hybrid.bin' }
 };
 
+// Constants
+const TURBO_FAST_FORWARD_RATIO = 100;
+
 // State
 let turboEnabled = false;
 let fpsInterval = null;
@@ -38,9 +41,13 @@ document.addEventListener('DOMContentLoaded', function() {
         turboBtn.textContent = turboEnabled ? 'Turbo: ON' : 'Turbo: OFF';
         turboBtn.classList.toggle('active', turboEnabled);
         if (window.EJS_emulator && window.EJS_emulator.gameManager) {
-            // Set a very high ratio for effectively unlimited speed
-            window.EJS_emulator.gameManager.setFastForwardRatio(100);
-            window.EJS_emulator.gameManager.toggleFastForward(turboEnabled ? 1 : 0);
+            if (turboEnabled) {
+                window.EJS_emulator.gameManager.setFastForwardRatio(TURBO_FAST_FORWARD_RATIO);
+                window.EJS_emulator.gameManager.toggleFastForward(1);
+            } else {
+                window.EJS_emulator.gameManager.setFastForwardRatio(1);
+                window.EJS_emulator.gameManager.toggleFastForward(0);
+            }
         }
     }
 

@@ -40,23 +40,6 @@ jobs:
       - name: Build hybrid ROMs
         run: make nwl23-hybrid csw24-hybrid
 
-      - name: Build timing ROMs
-        run: make timing-builds
-
-      - name: Build debug builds (for disassembly)
-        run: make debug-builds
-
-      - name: Generate timing report
-        run: |
-          bazel run //tests/gxtest:scrabble_timing_report -- \
-            -n 50 \
-            -o ${{ github.workspace }}/docs/timing_report.html
-
-      - name: Generate disassembly with profiling
-        run: |
-          bazel build //:disasm_csw24_shadow
-          cp -r bazel-bin/disasm_csw24_shadow docs/disassembly
-
       - name: Copy hybrid ROMs to docs
         run: |
           mkdir -p docs/play/roms
