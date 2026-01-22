@@ -27,7 +27,8 @@ jobs:
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           brew tap rosco-m68k/toolchain
-          brew install rosco-m68k/toolchain/m68k-elf-gcc
+          brew install rosco-m68k/toolchain/binutils-cross-m68k
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@13
 
       - name: Verify toolchain
         run: |
