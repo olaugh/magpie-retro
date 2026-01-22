@@ -406,9 +406,9 @@ TEST(Validation, CSW24_100Games) {
 // Run with: bazel test //tests/gxtest:scrabble_hybrid_test
 // ---------------------------------------------------------------------------
 
-#ifdef ROM_NWL23_HYBRID
-
 constexpr int HYBRID_NUM_SEEDS = 100;
+
+#ifdef ROM_NWL23_HYBRID
 
 TEST(Hybrid, NWL23_ScoresMatch) {
     // Fork all games in parallel for all three variants
