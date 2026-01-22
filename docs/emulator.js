@@ -4,6 +4,9 @@ const ROMS = {
     csw24: { name: 'CSW24 (International)', file: 'play/roms/csw24-hybrid.bin' }
 };
 
+// Constants
+const TURBO_FAST_FORWARD_RATIO = 100;
+
 // State
 let turboEnabled = false;
 let fpsInterval = null;
@@ -32,13 +35,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Turbo toggle (ratio is set to 0/unlimited at initialization via EJS_fastForwardRatio)
+    // Turbo toggle
     function toggleTurbo() {
         turboEnabled = !turboEnabled;
         turboBtn.textContent = turboEnabled ? 'Turbo: ON' : 'Turbo: OFF';
         turboBtn.classList.toggle('active', turboEnabled);
         if (window.EJS_emulator && window.EJS_emulator.gameManager) {
-            window.EJS_emulator.gameManager.toggleFastForward(turboEnabled ? 1 : 0);
+            if (turboEnabled) {
+                window.EJS_emulator.gameManager.setFastForwardRatio(TURBO_FAST_FORWARD_RATIO);
+                window.EJS_emulator.gameManager.toggleFastForward(1);
+            } else {
+                window.EJS_emulator.gameManager.setFastForwardRatio(1);
+                window.EJS_emulator.gameManager.toggleFastForward(0);
+            }
         }
     }
 
@@ -91,7 +100,6 @@ function loadEmulator(romKey) {
     window.EJS_color = '#22C55E';
     window.EJS_startOnLoaded = true;
     window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
-    window.EJS_fastForwardRatio = 0;  // 0 = unlimited speed for turbo mode
 
     const script = document.createElement('script');
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
