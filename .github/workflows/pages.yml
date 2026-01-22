@@ -41,10 +41,40 @@ jobs:
           brew install rosco-m68k/toolchain/binutils-cross-m68k
           brew install rosco-m68k/toolchain/gcc-cross-m68k@13
 
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
       - name: Build hybrid ROMs
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           make nwl23-hybrid csw24-hybrid
+
+      - name: Build timing ROMs
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make timing-builds
+
+      - name: Build debug builds (for disassembly)
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make debug-builds
+
+      - name: Generate timing report
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          bazelisk run //tests/gxtest:scrabble_timing_report -- \
+            -n 50 \
+            -o ${{ github.workspace }}/docs/timing_report.html
+
+      - name: Generate disassembly browser
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          bazelisk build //:disasm_csw24_shadow
+          cp -r bazel-bin/disasm_csw24_shadow docs/disassembly
 
       - name: Copy CI-built ROMs to docs
         run: |
