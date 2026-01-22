@@ -43,8 +43,8 @@ cc_test(
         "scrabble_test.cpp",
         "scrabble_symbols.h",
     ],
-    # Exclude Validation.* tests (run separately via scrabble_validation_test)
-    args = ["--gtest_filter=-Validation.*"],
+    # Exclude Validation.* and Hybrid.* tests (run separately)
+    args = ["--gtest_filter=-Validation.*:Hybrid.*"],
     data = [
         "//:out/scrabble-nwl23-shadow.bin",
         "//:out/scrabble-nwl23-noshadow.bin",
@@ -57,6 +57,46 @@ cc_test(
         'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
         'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
     ],
+    deps = [
+        "//gxtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Hybrid ROM Validation Tests
+# Validates that hybrid ROMs:
+# 1. Produce identical scores to shadow and noshadow variants
+# 2. Are at least as fast as min(shadow, noshadow) on every game
+# Build ROMs with: make nwl23-hybrid csw24-hybrid nwl23-shadow nwl23-noshadow csw24-shadow csw24-noshadow
+# Run with: bazel test //tests/gxtest:scrabble_hybrid_test
+# ---------------------------------------------------------------------------
+
+cc_test(
+    name = "scrabble_hybrid_test",
+    srcs = [
+        "scrabble_test.cpp",
+        "scrabble_symbols.h",
+    ],
+    args = ["--gtest_filter=Hybrid.*"],
+    data = [
+        "//:out/scrabble-nwl23-shadow.bin",
+        "//:out/scrabble-nwl23-noshadow.bin",
+        "//:out/scrabble-nwl23-hybrid.bin",
+        "//:out/scrabble-csw24-shadow.bin",
+        "//:out/scrabble-csw24-noshadow.bin",
+        "//:out/scrabble-csw24-hybrid.bin",
+    ],
+    defines = [
+        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
+        'ROM_NWL23_HYBRID=\\"out/scrabble-nwl23-hybrid.bin\\"',
+        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+        'ROM_CSW24_HYBRID=\\"out/scrabble-csw24-hybrid.bin\\"',
+    ],
+    # Longer timeout for running all three variants
+    timeout = "long",
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",

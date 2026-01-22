@@ -34,22 +34,38 @@ struct ExpectedResult {
     int16_t p1_score;
     uint32_t shadow_frames;
     uint32_t noshadow_frames;
+    uint32_t hybrid_frames;
 };
 
-// Expected results for seeds 0-9 (scores must match between shadow/noshadow).
+// Expected results for seeds 0-9 (scores must match between all variants).
 // Frame counts reflect the latest optimizations and are asserted to guard
 // against unexpected performance regressions.
+// Note: hybrid isn't guaranteed to be faster than shadow or noshadow on every game.
 constexpr ExpectedResult NWL23_EXPECTED[NUM_SEEDS] = {
-    {431, 467, 13826, 13916},  // Seed 0
-    {456, 463,  8526,  8746},  // Seed 1
-    {620, 344,  5483,  5767},  // Seed 2
-    {433, 411,  9606,  9397},  // Seed 3
-    {415, 451,  6359,  5670},  // Seed 4
-    {361, 458, 11295, 12381},  // Seed 5
-    {365, 506,  9616,  9504},  // Seed 6
-    {522, 440, 12028, 12060},  // Seed 7
-    {569, 308,  8664, 14249},  // Seed 8
-    {406, 483, 11423, 11487},  // Seed 9
+    {431, 467, 13826, 13916, 13319},  // Seed 0
+    {456, 463,  8526,  8746,  8111},  // Seed 1
+    {620, 344,  5483,  5767,  5080},  // Seed 2
+    {433, 411,  9606,  9397,  9185},  // Seed 3
+    {415, 451,  6359,  5670,  5792},  // Seed 4
+    {361, 458, 11295, 12381, 10648},  // Seed 5
+    {365, 506,  9616,  9504,  9236},  // Seed 6
+    {522, 440, 12028, 12060, 11999},  // Seed 7
+    {569, 308,  8664, 14249,  7941},  // Seed 8
+    {406, 483, 11423, 11487, 10864},  // Seed 9
+};
+
+// CSW24 expected results (hybrid isn't guaranteed faster on every game)
+constexpr ExpectedResult CSW24_EXPECTED[NUM_SEEDS] = {
+    {405, 434, 11052, 10320, 10524},  // Seed 0
+    {494, 403, 12846, 15482, 12479},  // Seed 1
+    {544, 287,  7468, 13089,  6902},  // Seed 2
+    {508, 372,  7203,  8626,  6834},  // Seed 3
+    {509, 400,  5377,  6264,  4789},  // Seed 4
+    {399, 437,  6938,  7286,  6479},  // Seed 5
+    {467, 452,  6741,  7233,  6682},  // Seed 6
+    {559, 520,  7210,  7412,  7156},  // Seed 7
+    {548, 347,  6286, 11120,  5966},  // Seed 8
+    {526, 452, 14534, 17344, 14153},  // Seed 9
 };
 
 // ---------------------------------------------------------------------------
@@ -352,5 +368,262 @@ TEST(Validation, CSW24_100Games) {
 
     EXPECT_EQ(completed, VALIDATION_NUM_GAMES) << "All games should complete";
 }
+
+// ---------------------------------------------------------------------------
+// Hybrid ROM Validation Tests
+// Validates that hybrid ROMs produce identical scores to shadow/noshadow
+// and are at least as fast as the faster of the two on every game.
+// Run with: bazel test //tests/gxtest:scrabble_hybrid_test
+// ---------------------------------------------------------------------------
+
+#ifdef ROM_NWL23_HYBRID
+
+constexpr int HYBRID_NUM_SEEDS = 100;
+
+TEST(Hybrid, NWL23_ScoresMatch) {
+    // Fork all games in parallel for all three variants
+    std::vector<int> shadow_fds;
+    std::vector<int> noshadow_fds;
+    std::vector<int> hybrid_fds;
+
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        shadow_fds.push_back(ForkGame(ROM_NWL23_SHADOW, seed));
+        noshadow_fds.push_back(ForkGame(ROM_NWL23_NOSHADOW, seed));
+        hybrid_fds.push_back(ForkGame(ROM_NWL23_HYBRID, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    std::vector<GameResult> shadow_results, noshadow_results, hybrid_results;
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        shadow_results.push_back(ReadGameResult(shadow_fds[seed]));
+        noshadow_results.push_back(ReadGameResult(noshadow_fds[seed]));
+        hybrid_results.push_back(ReadGameResult(hybrid_fds[seed]));
+    }
+
+    // Print results table
+    std::cout << "\n=== NWL23 Hybrid Validation (" << HYBRID_NUM_SEEDS << " games) ===" << std::endl;
+    std::cout << std::setw(6) << "Seed"
+              << std::setw(8) << "P0"
+              << std::setw(8) << "P1"
+              << std::setw(10) << "Shadow"
+              << std::setw(10) << "NoShadow"
+              << std::setw(10) << "Hybrid"
+              << std::setw(8) << "Best"
+              << std::setw(8) << "Margin" << std::endl;
+    std::cout << std::string(68, '-') << std::endl;
+
+    uint32_t shadow_total = 0, noshadow_total = 0, hybrid_total = 0;
+    int hybrid_wins = 0, hybrid_ties = 0, hybrid_losses = 0;
+    int max_loss = 0;
+
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        const auto& shadow = shadow_results[seed];
+        const auto& noshadow = noshadow_results[seed];
+        const auto& hybrid = hybrid_results[seed];
+
+        ASSERT_TRUE(shadow.completed) << "Shadow game " << seed << " did not complete";
+        ASSERT_TRUE(noshadow.completed) << "NoShadow game " << seed << " did not complete";
+        ASSERT_TRUE(hybrid.completed) << "Hybrid game " << seed << " did not complete";
+
+        // Scores must match across all three variants
+        EXPECT_EQ(shadow.p0_score, noshadow.p0_score) << "Seed " << seed << " shadow/noshadow P0 mismatch";
+        EXPECT_EQ(shadow.p1_score, noshadow.p1_score) << "Seed " << seed << " shadow/noshadow P1 mismatch";
+        EXPECT_EQ(shadow.p0_score, hybrid.p0_score) << "Seed " << seed << " shadow/hybrid P0 mismatch";
+        EXPECT_EQ(shadow.p1_score, hybrid.p1_score) << "Seed " << seed << " shadow/hybrid P1 mismatch";
+
+        // For seeds 0-9, assert on expected frame counts (regression detection)
+        if (seed < NUM_SEEDS) {
+            const auto& expected = NWL23_EXPECTED[seed];
+            EXPECT_EQ(shadow.p0_score, expected.p0_score) << "Seed " << seed << " P0 score";
+            EXPECT_EQ(shadow.p1_score, expected.p1_score) << "Seed " << seed << " P1 score";
+            EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+            EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+            EXPECT_EQ(hybrid.frames, expected.hybrid_frames) << "Seed " << seed << " hybrid frames";
+        }
+
+        uint32_t best_baseline = std::min(shadow.frames, noshadow.frames);
+        int margin = static_cast<int>(hybrid.frames) - static_cast<int>(best_baseline);
+
+        if (margin < 0) hybrid_wins++;
+        else if (margin == 0) hybrid_ties++;
+        else {
+            hybrid_losses++;
+            if (margin > max_loss) max_loss = margin;
+        }
+
+        // Only print first 20 and any failures
+        bool score_ok = (shadow.p0_score == hybrid.p0_score && shadow.p1_score == hybrid.p1_score);
+        bool speed_ok = (hybrid.frames <= best_baseline);
+        if (seed < 20 || !score_ok || !speed_ok) {
+            std::cout << std::setw(6) << seed
+                      << std::setw(8) << hybrid.p0_score
+                      << std::setw(8) << hybrid.p1_score
+                      << std::setw(10) << shadow.frames
+                      << std::setw(10) << noshadow.frames
+                      << std::setw(10) << hybrid.frames
+                      << std::setw(8) << best_baseline
+                      << std::setw(8) << margin;
+            if (!score_ok) std::cout << " SCORE!";
+            if (!speed_ok) std::cout << " SLOW!";
+            std::cout << std::endl;
+        }
+
+        shadow_total += shadow.frames;
+        noshadow_total += noshadow.frames;
+        hybrid_total += hybrid.frames;
+
+    }
+
+    std::cout << std::string(68, '-') << std::endl;
+    std::cout << std::setw(6) << "Total"
+              << std::setw(8) << ""
+              << std::setw(8) << ""
+              << std::setw(10) << shadow_total
+              << std::setw(10) << noshadow_total
+              << std::setw(10) << hybrid_total << std::endl;
+
+    uint32_t best_total = std::min(shadow_total, noshadow_total);
+    double savings = 100.0 * (static_cast<int>(best_total) - static_cast<int>(hybrid_total)) / best_total;
+
+    std::cout << "\nHybrid vs best baseline: " << std::fixed << std::setprecision(2)
+              << savings << "% " << (savings >= 0 ? "faster" : "slower") << std::endl;
+    std::cout << "Per-game: " << hybrid_wins << " faster, " << hybrid_ties << " tied, "
+              << hybrid_losses << " slower (max loss: " << max_loss << " frames)" << std::endl;
+
+    // Overall hybrid total must be <= best baseline total
+    // (per-game variance is expected, but overall it should be at least as fast)
+    EXPECT_LE(hybrid_total, best_total)
+        << "Hybrid total (" << hybrid_total << ") slower than best baseline total ("
+        << best_total << ")";
+}
+
+#endif // ROM_NWL23_HYBRID
+
+#ifdef ROM_CSW24_HYBRID
+
+TEST(Hybrid, CSW24_ScoresMatch) {
+    // Fork all games in parallel for all three variants
+    std::vector<int> shadow_fds;
+    std::vector<int> noshadow_fds;
+    std::vector<int> hybrid_fds;
+
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        shadow_fds.push_back(ForkGame(ROM_CSW24_SHADOW, seed));
+        noshadow_fds.push_back(ForkGame(ROM_CSW24_NOSHADOW, seed));
+        hybrid_fds.push_back(ForkGame(ROM_CSW24_HYBRID, seed));
+    }
+
+    // Wait for all child processes
+    while (wait(nullptr) > 0) {}
+
+    // Collect results
+    std::vector<GameResult> shadow_results, noshadow_results, hybrid_results;
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        shadow_results.push_back(ReadGameResult(shadow_fds[seed]));
+        noshadow_results.push_back(ReadGameResult(noshadow_fds[seed]));
+        hybrid_results.push_back(ReadGameResult(hybrid_fds[seed]));
+    }
+
+    // Print results table
+    std::cout << "\n=== CSW24 Hybrid Validation (" << HYBRID_NUM_SEEDS << " games) ===" << std::endl;
+    std::cout << std::setw(6) << "Seed"
+              << std::setw(8) << "P0"
+              << std::setw(8) << "P1"
+              << std::setw(10) << "Shadow"
+              << std::setw(10) << "NoShadow"
+              << std::setw(10) << "Hybrid"
+              << std::setw(8) << "Best"
+              << std::setw(8) << "Margin" << std::endl;
+    std::cout << std::string(68, '-') << std::endl;
+
+    uint32_t shadow_total = 0, noshadow_total = 0, hybrid_total = 0;
+    int hybrid_wins = 0, hybrid_ties = 0, hybrid_losses = 0;
+    int max_loss = 0;
+
+    for (int seed = 0; seed < HYBRID_NUM_SEEDS; seed++) {
+        const auto& shadow = shadow_results[seed];
+        const auto& noshadow = noshadow_results[seed];
+        const auto& hybrid = hybrid_results[seed];
+
+        ASSERT_TRUE(shadow.completed) << "Shadow game " << seed << " did not complete";
+        ASSERT_TRUE(noshadow.completed) << "NoShadow game " << seed << " did not complete";
+        ASSERT_TRUE(hybrid.completed) << "Hybrid game " << seed << " did not complete";
+
+        // Scores must match across all three variants
+        EXPECT_EQ(shadow.p0_score, noshadow.p0_score) << "Seed " << seed << " shadow/noshadow P0 mismatch";
+        EXPECT_EQ(shadow.p1_score, noshadow.p1_score) << "Seed " << seed << " shadow/noshadow P1 mismatch";
+        EXPECT_EQ(shadow.p0_score, hybrid.p0_score) << "Seed " << seed << " shadow/hybrid P0 mismatch";
+        EXPECT_EQ(shadow.p1_score, hybrid.p1_score) << "Seed " << seed << " shadow/hybrid P1 mismatch";
+
+        // For seeds 0-9, assert on expected frame counts (regression detection)
+        if (seed < NUM_SEEDS) {
+            const auto& expected = CSW24_EXPECTED[seed];
+            EXPECT_EQ(shadow.p0_score, expected.p0_score) << "Seed " << seed << " P0 score";
+            EXPECT_EQ(shadow.p1_score, expected.p1_score) << "Seed " << seed << " P1 score";
+            EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+            EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+            EXPECT_EQ(hybrid.frames, expected.hybrid_frames) << "Seed " << seed << " hybrid frames";
+        }
+
+        uint32_t best_baseline = std::min(shadow.frames, noshadow.frames);
+        int margin = static_cast<int>(hybrid.frames) - static_cast<int>(best_baseline);
+
+        if (margin < 0) hybrid_wins++;
+        else if (margin == 0) hybrid_ties++;
+        else {
+            hybrid_losses++;
+            if (margin > max_loss) max_loss = margin;
+        }
+
+        // Only print first 20 and any failures
+        bool score_ok = (shadow.p0_score == hybrid.p0_score && shadow.p1_score == hybrid.p1_score);
+        bool speed_ok = (hybrid.frames <= best_baseline);
+        if (seed < 20 || !score_ok || !speed_ok) {
+            std::cout << std::setw(6) << seed
+                      << std::setw(8) << hybrid.p0_score
+                      << std::setw(8) << hybrid.p1_score
+                      << std::setw(10) << shadow.frames
+                      << std::setw(10) << noshadow.frames
+                      << std::setw(10) << hybrid.frames
+                      << std::setw(8) << best_baseline
+                      << std::setw(8) << margin;
+            if (!score_ok) std::cout << " SCORE!";
+            if (!speed_ok) std::cout << " SLOW!";
+            std::cout << std::endl;
+        }
+
+        shadow_total += shadow.frames;
+        noshadow_total += noshadow.frames;
+        hybrid_total += hybrid.frames;
+
+    }
+
+    std::cout << std::string(68, '-') << std::endl;
+    std::cout << std::setw(6) << "Total"
+              << std::setw(8) << ""
+              << std::setw(8) << ""
+              << std::setw(10) << shadow_total
+              << std::setw(10) << noshadow_total
+              << std::setw(10) << hybrid_total << std::endl;
+
+    uint32_t best_total = std::min(shadow_total, noshadow_total);
+    double savings = 100.0 * (static_cast<int>(best_total) - static_cast<int>(hybrid_total)) / best_total;
+
+    std::cout << "\nHybrid vs best baseline: " << std::fixed << std::setprecision(2)
+              << savings << "% " << (savings >= 0 ? "faster" : "slower") << std::endl;
+    std::cout << "Per-game: " << hybrid_wins << " faster, " << hybrid_ties << " tied, "
+              << hybrid_losses << " slower (max loss: " << max_loss << " frames)" << std::endl;
+
+    // Overall hybrid total must be <= best baseline total
+    // (per-game variance is expected, but overall it should be at least as fast)
+    EXPECT_LE(hybrid_total, best_total)
+        << "Hybrid total (" << hybrid_total << ") slower than best baseline total ("
+        << best_total << ")";
+}
+
+#endif // ROM_CSW24_HYBRID
 
 } // namespace

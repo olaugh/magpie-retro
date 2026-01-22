@@ -14,8 +14,10 @@ package(default_visibility = ["//visibility:public"])
 exports_files([
     "out/scrabble-nwl23-shadow.bin",
     "out/scrabble-nwl23-noshadow.bin",
+    "out/scrabble-nwl23-hybrid.bin",
     "out/scrabble-csw24-shadow.bin",
     "out/scrabble-csw24-noshadow.bin",
+    "out/scrabble-csw24-hybrid.bin",
     "build/nwl23-shadow/scrabble.elf",
     "build/nwl23-noshadow/scrabble.elf",
     "build/csw24-shadow/scrabble.elf",
