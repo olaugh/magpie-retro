@@ -4,6 +4,17 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# ---------------------------------------------------------------------------
+# Config Settings
+# ---------------------------------------------------------------------------
+
+# Enable strict frame count assertions (for GCC 15 builds only)
+# Use: bazel test --define=strict_frames=true //tests/gxtest:scrabble_test
+config_setting(
+    name = "strict_frames",
+    define_values = {"strict_frames": "true"},
+)
+
 exports_files(["scrabble_symbols.h"])
 
 # ---------------------------------------------------------------------------
@@ -43,8 +54,8 @@ cc_test(
         "scrabble_test.cpp",
         "scrabble_symbols.h",
     ],
-    # Exclude Validation.* tests (run separately via scrabble_validation_test)
-    args = ["--gtest_filter=-Validation.*"],
+    # Exclude Validation.* and Hybrid.* tests (run separately)
+    args = ["--gtest_filter=-Validation.*:Hybrid.*"],
     data = [
         "//:out/scrabble-nwl23-shadow.bin",
         "//:out/scrabble-nwl23-noshadow.bin",
@@ -56,7 +67,53 @@ cc_test(
         'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
         'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
         'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+    ] + select({
+        ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//gxtest",
+        "@googletest//:gtest_main",
     ],
+)
+
+# ---------------------------------------------------------------------------
+# Hybrid ROM Validation Tests
+# Validates that hybrid ROMs:
+# 1. Produce identical scores to shadow and noshadow variants
+# 2. Have total runtime at least as fast as min(shadow, noshadow) across all games
+# Build ROMs with: make nwl23-hybrid csw24-hybrid nwl23-shadow nwl23-noshadow csw24-shadow csw24-noshadow
+# Run with: bazel test //tests/gxtest:scrabble_hybrid_test
+# ---------------------------------------------------------------------------
+
+cc_test(
+    name = "scrabble_hybrid_test",
+    srcs = [
+        "scrabble_test.cpp",
+        "scrabble_symbols.h",
+    ],
+    args = ["--gtest_filter=Hybrid.*"],
+    data = [
+        "//:out/scrabble-nwl23-shadow.bin",
+        "//:out/scrabble-nwl23-noshadow.bin",
+        "//:out/scrabble-nwl23-hybrid.bin",
+        "//:out/scrabble-csw24-shadow.bin",
+        "//:out/scrabble-csw24-noshadow.bin",
+        "//:out/scrabble-csw24-hybrid.bin",
+    ],
+    defines = [
+        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
+        'ROM_NWL23_HYBRID=\\"out/scrabble-nwl23-hybrid.bin\\"',
+        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+        'ROM_CSW24_HYBRID=\\"out/scrabble-csw24-hybrid.bin\\"',
+    ] + select({
+        ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
+        "//conditions:default": [],
+    }),
+    # Longer timeout for running all three variants
+    timeout = "long",
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",

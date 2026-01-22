@@ -1,0 +1,3 @@
+# Local development defaults
+# Enable strict frame assertions (requires GCC 15 m68k toolchain)
+build --define=strict_frames=true

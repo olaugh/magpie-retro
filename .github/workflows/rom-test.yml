@@ -1,0 +1,71 @@
+name: ROM Validation Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-roms:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Install Homebrew on Linux and the correct m68k-elf bare-metal toolchain
+      # Note: gcc-m68k-linux-gnu from apt targets Linux, NOT bare-metal
+      # The rosco-m68k/toolchain tap provides the correct bare-metal toolchain
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+
+      - name: Install m68k-elf toolchain via Homebrew
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap rosco-m68k/toolchain
+          brew install rosco-m68k/toolchain/binutils-cross-m68k
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@13
+
+      - name: Verify toolchain
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          m68k-elf-gcc --version
+          which m68k-elf-gcc
+
+      - name: Build all ROM variants
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make all nwl23-hybrid csw24-hybrid
+
+      - name: Verify ROMs built
+        run: |
+          ls -la out/*.bin
+          # Check that hybrid ROMs exist and have reasonable size
+          test -f out/scrabble-nwl23-hybrid.bin
+          test -f out/scrabble-csw24-hybrid.bin
+          # ROMs should be at least 1MB (they include lexicon data)
+          test $(stat -c%s out/scrabble-nwl23-hybrid.bin) -gt 1000000
+          test $(stat -c%s out/scrabble-csw24-hybrid.bin) -gt 1000000
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Run hybrid validation tests
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          # Disable strict frame assertions (require GCC 15, CI uses GCC 13)
+          bazelisk test //tests/gxtest:scrabble_hybrid_test --test_output=errors --define=strict_frames=false
+
+      - name: Run standard ROM tests
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          # Disable strict frame assertions (require GCC 15, CI uses GCC 13)
+          bazelisk test //tests/gxtest:scrabble_test --test_output=errors --define=strict_frames=false

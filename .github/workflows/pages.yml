@@ -24,6 +24,44 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Install Homebrew and m68k-elf toolchain for building ROMs
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+
+      - name: Install m68k-elf toolchain via Homebrew
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap rosco-m68k/toolchain
+          brew install rosco-m68k/toolchain/binutils-cross-m68k
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@13
+
+      - name: Build hybrid ROMs
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make nwl23-hybrid csw24-hybrid
+
+      - name: Copy CI-built ROMs to docs
+        run: |
+          cp out/scrabble-nwl23-hybrid.bin docs/play/roms/nwl23-hybrid-ci.bin
+          cp out/scrabble-csw24-hybrid.bin docs/play/roms/csw24-hybrid-ci.bin
+
+      - name: Inject build timestamps
+        run: |
+          # Get dates in YYMMDD format
+          CI_DATE=$(date +%y%m%d)
+          LOCAL_DATE=$(git log -1 --format="%ci" -- docs/play/roms/nwl23-hybrid.bin | cut -d' ' -f1 | sed 's/^20//' | tr -d '-')
+          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          # Replace placeholders in emulator.js and index.html
+          sed -i "s/__LOCAL_DATE__/${LOCAL_DATE}/g" docs/emulator.js docs/index.html
+          sed -i "s/__CI_DATE__/${CI_DATE}/g" docs/emulator.js docs/index.html
+          sed -i "s/__BUILD_TIME__/${BUILD_TIME}/g" docs/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
