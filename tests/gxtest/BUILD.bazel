@@ -4,6 +4,17 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
+# ---------------------------------------------------------------------------
+# Config Settings
+# ---------------------------------------------------------------------------
+
+# Enable strict frame count assertions (for GCC 15 builds only)
+# Use: bazel test --define=strict_frames=true //tests/gxtest:scrabble_test
+config_setting(
+    name = "strict_frames",
+    define_values = {"strict_frames": "true"},
+)
+
 exports_files(["scrabble_symbols.h"])
 
 # ---------------------------------------------------------------------------
@@ -56,7 +67,10 @@ cc_test(
         'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
         'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
         'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
-    ],
+    ] + select({
+        ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//gxtest",
         "@googletest//:gtest_main",
@@ -94,7 +108,10 @@ cc_test(
         'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
         'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
         'ROM_CSW24_HYBRID=\\"out/scrabble-csw24-hybrid.bin\\"',
-    ],
+    ] + select({
+        ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
+        "//conditions:default": [],
+    }),
     # Longer timeout for running all three variants
     timeout = "long",
     deps = [

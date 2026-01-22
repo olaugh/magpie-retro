@@ -195,17 +195,30 @@ TEST(NWL23, AllSeeds) {
 
         bool score_ok = (shadow.p0_score == expected.p0_score &&
                          shadow.p1_score == expected.p1_score);
+#ifdef STRICT_FRAME_ASSERTIONS
+        bool frames_ok = (shadow.frames == expected.shadow_frames &&
+                          noshadow.frames == expected.noshadow_frames);
         if (!score_ok) std::cout << " SCORE!";
+        if (!frames_ok) std::cout << " FRAMES!";
+#else
+        if (!score_ok) std::cout << " SCORE!";
+#endif
         std::cout << std::endl;
 
         shadow_total += shadow.frames;
         noshadow_total += noshadow.frames;
 
-        // Score assertions (frame counts vary by compiler/platform)
+        // Score assertions (always checked)
         EXPECT_EQ(shadow.p0_score, expected.p0_score) << "Seed " << seed << " shadow P0";
         EXPECT_EQ(shadow.p1_score, expected.p1_score) << "Seed " << seed << " shadow P1";
         EXPECT_EQ(shadow.p0_score, noshadow.p0_score) << "Seed " << seed << " P0 mismatch";
         EXPECT_EQ(shadow.p1_score, noshadow.p1_score) << "Seed " << seed << " P1 mismatch";
+
+#ifdef STRICT_FRAME_ASSERTIONS
+        // Frame assertions (only with GCC 15 builds)
+        EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+        EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+#endif
     }
 
     std::cout << std::string(50, '-') << std::endl;
@@ -266,10 +279,7 @@ TEST(CSW24, AllSeeds) {
         ASSERT_TRUE(shadow.completed) << "Shadow game " << seed << " did not complete";
         ASSERT_TRUE(noshadow.completed) << "NoShadow game " << seed << " did not complete";
 
-        // Scores must match between shadow and noshadow
-        EXPECT_EQ(shadow.p0_score, noshadow.p0_score) << "Seed " << seed << " P0 mismatch";
-        EXPECT_EQ(shadow.p1_score, noshadow.p1_score) << "Seed " << seed << " P1 mismatch";
-
+        const auto& expected = CSW24_EXPECTED[seed];
         int diff = static_cast<int>(noshadow.frames) - static_cast<int>(shadow.frames);
 
         std::cout << std::setw(6) << seed
@@ -277,10 +287,34 @@ TEST(CSW24, AllSeeds) {
                   << std::setw(8) << shadow.p1_score
                   << std::setw(10) << shadow.frames
                   << std::setw(10) << noshadow.frames
-                  << std::setw(8) << diff << std::endl;
+                  << std::setw(8) << diff;
+
+        bool score_ok = (shadow.p0_score == expected.p0_score &&
+                         shadow.p1_score == expected.p1_score);
+#ifdef STRICT_FRAME_ASSERTIONS
+        bool frames_ok = (shadow.frames == expected.shadow_frames &&
+                          noshadow.frames == expected.noshadow_frames);
+        if (!score_ok) std::cout << " SCORE!";
+        if (!frames_ok) std::cout << " FRAMES!";
+#else
+        if (!score_ok) std::cout << " SCORE!";
+#endif
+        std::cout << std::endl;
 
         shadow_total += shadow.frames;
         noshadow_total += noshadow.frames;
+
+        // Score assertions (always checked)
+        EXPECT_EQ(shadow.p0_score, expected.p0_score) << "Seed " << seed << " CSW24 P0";
+        EXPECT_EQ(shadow.p1_score, expected.p1_score) << "Seed " << seed << " CSW24 P1";
+        EXPECT_EQ(shadow.p0_score, noshadow.p0_score) << "Seed " << seed << " P0 mismatch";
+        EXPECT_EQ(shadow.p1_score, noshadow.p1_score) << "Seed " << seed << " P1 mismatch";
+
+#ifdef STRICT_FRAME_ASSERTIONS
+        // Frame assertions (only with GCC 15 builds)
+        EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+        EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+#endif
     }
 
     std::cout << std::string(50, '-') << std::endl;
@@ -443,6 +477,12 @@ TEST(Hybrid, NWL23_ScoresMatch) {
         // Only print first 20 and any failures
         bool score_ok = (shadow.p0_score == hybrid.p0_score && shadow.p1_score == hybrid.p1_score);
         bool speed_ok = (hybrid.frames <= best_baseline);
+#ifdef STRICT_FRAME_ASSERTIONS
+        const auto& expected = NWL23_EXPECTED[seed];
+        bool frames_ok = (seed >= NUM_SEEDS) || (shadow.frames == expected.shadow_frames &&
+                          noshadow.frames == expected.noshadow_frames &&
+                          hybrid.frames == expected.hybrid_frames);
+#endif
         if (seed < 20 || !score_ok || !speed_ok) {
             std::cout << std::setw(6) << seed
                       << std::setw(8) << hybrid.p0_score
@@ -454,6 +494,9 @@ TEST(Hybrid, NWL23_ScoresMatch) {
                       << std::setw(8) << margin;
             if (!score_ok) std::cout << " SCORE!";
             if (!speed_ok) std::cout << " SLOW!";
+#ifdef STRICT_FRAME_ASSERTIONS
+            if (!frames_ok) std::cout << " FRAMES!";
+#endif
             std::cout << std::endl;
         }
 
@@ -461,6 +504,14 @@ TEST(Hybrid, NWL23_ScoresMatch) {
         noshadow_total += noshadow.frames;
         hybrid_total += hybrid.frames;
 
+#ifdef STRICT_FRAME_ASSERTIONS
+        // Frame assertions for seeds 0-9 (only with GCC 15 builds)
+        if (seed < NUM_SEEDS) {
+            EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+            EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+            EXPECT_EQ(hybrid.frames, expected.hybrid_frames) << "Seed " << seed << " hybrid frames";
+        }
+#endif
     }
 
     std::cout << std::string(68, '-') << std::endl;
@@ -557,6 +608,12 @@ TEST(Hybrid, CSW24_ScoresMatch) {
         // Only print first 20 and any failures
         bool score_ok = (shadow.p0_score == hybrid.p0_score && shadow.p1_score == hybrid.p1_score);
         bool speed_ok = (hybrid.frames <= best_baseline);
+#ifdef STRICT_FRAME_ASSERTIONS
+        const auto& expected = CSW24_EXPECTED[seed];
+        bool frames_ok = (seed >= NUM_SEEDS) || (shadow.frames == expected.shadow_frames &&
+                          noshadow.frames == expected.noshadow_frames &&
+                          hybrid.frames == expected.hybrid_frames);
+#endif
         if (seed < 20 || !score_ok || !speed_ok) {
             std::cout << std::setw(6) << seed
                       << std::setw(8) << hybrid.p0_score
@@ -568,6 +625,9 @@ TEST(Hybrid, CSW24_ScoresMatch) {
                       << std::setw(8) << margin;
             if (!score_ok) std::cout << " SCORE!";
             if (!speed_ok) std::cout << " SLOW!";
+#ifdef STRICT_FRAME_ASSERTIONS
+            if (!frames_ok) std::cout << " FRAMES!";
+#endif
             std::cout << std::endl;
         }
 
@@ -575,6 +635,14 @@ TEST(Hybrid, CSW24_ScoresMatch) {
         noshadow_total += noshadow.frames;
         hybrid_total += hybrid.frames;
 
+#ifdef STRICT_FRAME_ASSERTIONS
+        // Frame assertions for seeds 0-9 (only with GCC 15 builds)
+        if (seed < NUM_SEEDS) {
+            EXPECT_EQ(shadow.frames, expected.shadow_frames) << "Seed " << seed << " shadow frames";
+            EXPECT_EQ(noshadow.frames, expected.noshadow_frames) << "Seed " << seed << " noshadow frames";
+            EXPECT_EQ(hybrid.frames, expected.hybrid_frames) << "Seed " << seed << " hybrid frames";
+        }
+#endif
     }
 
     std::cout << std::string(68, '-') << std::endl;

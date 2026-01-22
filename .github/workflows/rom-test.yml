@@ -61,9 +61,11 @@ jobs:
       - name: Run hybrid validation tests
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          bazelisk test //tests/gxtest:scrabble_hybrid_test --test_output=errors
+          # Disable strict frame assertions (require GCC 15, CI uses GCC 13)
+          bazelisk test //tests/gxtest:scrabble_hybrid_test --test_output=errors --define=strict_frames=false
 
       - name: Run standard ROM tests
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          bazelisk test //tests/gxtest:scrabble_test --test_output=errors
+          # Disable strict frame assertions (require GCC 15, CI uses GCC 13)
+          bazelisk test //tests/gxtest:scrabble_test --test_output=errors --define=strict_frames=false
