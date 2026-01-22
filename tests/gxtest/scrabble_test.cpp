@@ -402,7 +402,8 @@ TEST(Validation, CSW24_100Games) {
 // ---------------------------------------------------------------------------
 // Hybrid ROM Validation Tests
 // Validates that hybrid ROMs produce identical scores to shadow/noshadow
-// and are at least as fast as the faster of the two on every game.
+// and have total frames no higher than the faster variant across all games.
+// Per-game variance is allowed; only overall performance is enforced.
 // Run with: bazel test //tests/gxtest:scrabble_hybrid_test
 // ---------------------------------------------------------------------------
 

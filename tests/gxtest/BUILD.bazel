@@ -81,7 +81,7 @@ cc_test(
 # Hybrid ROM Validation Tests
 # Validates that hybrid ROMs:
 # 1. Produce identical scores to shadow and noshadow variants
-# 2. Are at least as fast as min(shadow, noshadow) on every game
+# 2. Have total runtime at least as fast as min(shadow, noshadow) across all games
 # Build ROMs with: make nwl23-hybrid csw24-hybrid nwl23-shadow nwl23-noshadow csw24-shadow csw24-noshadow
 # Run with: bazel test //tests/gxtest:scrabble_hybrid_test
 # ---------------------------------------------------------------------------
