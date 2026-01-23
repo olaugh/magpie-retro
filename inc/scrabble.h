@@ -70,15 +70,6 @@ typedef enum {
 #define TO_EIGHTHS(x) ((x) * 8)
 
 /*
- * Static evaluation adjustments control.
- * USE_STATIC_EVAL_ADJUSTMENTS=1 enables opening penalties and endgame adjustments.
- * Set to 0 to disable for comparison testing.
- */
-#ifndef USE_STATIC_EVAL_ADJUSTMENTS
-#define USE_STATIC_EVAL_ADJUSTMENTS 1
-#endif
-
-/*
  * Static evaluation constants (matching original magpie static_eval_defs.h)
  * Converted from EQUITY_RESOLUTION=1000 to EQUITY_RESOLUTION=8 (eighths)
  */
@@ -243,21 +234,10 @@ void bag_return_tiles(Bag *bag, const MachineLetter *tiles, int count);
 struct KLV;
 typedef struct KLV KLV;
 
-/* Move generation flags */
-typedef enum {
-    MOVEGEN_FLAG_NONE = 0,
-    MOVEGEN_FLAG_NO_STATIC_ADJUSTMENTS = 1,  /* Disable opening/endgame adjustments */
-} MoveGenFlags;
-
 /* Move generation */
 void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
                     const uint32_t *kwg, const KLV *klv, const Bag *bag,
                     MoveList *moves);
-
-/* Move generation with flags for strategy comparison */
-void generate_moves_ex(const Board *board, const Rack *rack, const Rack *opp_rack,
-                       const uint32_t *kwg, const KLV *klv, const Bag *bag,
-                       MoveGenFlags flags, MoveList *moves);
 void sort_moves_by_score(MoveList *moves);
 
 /* Scoring */

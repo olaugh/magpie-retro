@@ -2,23 +2,27 @@
 
 The gamepairs test harness compares two move generation strategies by running paired games with swapped player positions, canceling out first-player advantage.
 
-## Getting the Code
+## Historical Code
 
-The gamepairs test code was added in commit `304996d`. If it has been removed from the current branch, you can retrieve it with:
+The gamepairs test code and `MoveGenFlags` runtime strategy switching were added in commit `304996d` for validation, then removed. To run gamepairs tests, you need to check out that commit or cherry-pick the relevant code.
 
 ```bash
+# Check out the commit with gamepairs support
+git checkout 304996d
+
+# Or retrieve just the test file (requires MoveGenFlags from that commit)
 git show 304996d:test_gamepairs.c > test_gamepairs.c
+git show 304996d:inc/scrabble.h > inc/scrabble.h  # for MoveGenFlags
+git show 304996d:src/movegen.c > src/movegen.c    # for generate_moves_ex
 ```
 
-## Building
+## Building (at commit 304996d)
 
 ```bash
 gcc -O3 -Iinc -o test_gamepairs test_gamepairs.c \
     src/board.c src/game.c src/movegen.c src/klv.c src/kwg.c src/libc.c \
     build/nwl23-shadow/kwg_data.c build/nwl23-shadow/klv_data.c
 ```
-
-Note: Requires `nwl23-shadow` data files. Run `make nwl23-shadow` first if needed.
 
 ## Usage
 
@@ -39,23 +43,3 @@ Where:
 - `new_spread = (P0_A - P1_A) + (P1_B - P0_B)` = net advantage of new strategy
 
 Summary statistics are printed to stderr.
-
-### Example
-
-```bash
-# Run 10,000 gamepairs
-./test_gamepairs 0 9999 > results.txt
-
-# View summary
-tail -10 results.txt
-```
-
-## Modifying Strategies
-
-Edit `test_gamepairs.c` to change what's being compared:
-
-```c
-/* Flags for old (no adjustments) and new (with adjustments) strategies */
-MoveGenFlags old_flags = MOVEGEN_FLAG_NO_STATIC_ADJUSTMENTS;
-MoveGenFlags new_flags = MOVEGEN_FLAG_NONE;
-```

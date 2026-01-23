@@ -143,7 +143,6 @@ typedef struct {
     const uint32_t *kwg;
     const KLV *klv;      /* Leave values (may be NULL) */
     const Rack *opp_rack; /* Opponent rack for endgame adjustment (may be NULL) */
-    MoveGenFlags flags;   /* Runtime flags for strategy comparison */
     Rack rack;           /* Mutable copy of player rack */
     Rack rack_shadow_right_copy;  /* Save rack state before shadow right */
     Move *best_move;     /* Track best move found so far */
@@ -664,10 +663,6 @@ static void shadow_record(MoveGenState *gen) {
 #if USE_SHADOW_DEBUG
     shadow_debug_record_calls++;
 #endif
-    /* Check if static eval adjustments are enabled (compile-time and runtime) */
-    int use_adjustments = USE_STATIC_EVAL_ADJUSTMENTS &&
-                          !(gen->flags & MOVEGEN_FLAG_NO_STATIC_ADJUSTMENTS);
-
     if (gen->tiles_in_bag > 0) {
         /* Normal game: add best possible leave value */
         if (gen->klv != NULL) {
@@ -679,17 +674,8 @@ static void shadow_record(MoveGenState *gen) {
 #endif
         }
     } else {
-        if (use_adjustments) {
-            /* Endgame: use shadow endgame adjustment (best case for upper bound) */
-            equity += shadow_endgame_adjustment(gen, gen->tiles_played);
-        } else {
-            /* Old behavior: add best leave even in endgame */
-            if (gen->klv != NULL) {
-                int tiles_remaining = gen->shadow_original_rack_total - gen->tiles_played;
-                Equity leave = get_best_leave_for_tiles_remaining(gen, tiles_remaining);
-                equity += leave;
-            }
-        }
+        /* Endgame: use shadow endgame adjustment (best case for upper bound) */
+        equity += shadow_endgame_adjustment(gen, gen->tiles_played);
     }
 
     if (equity > gen->highest_shadow_equity) {
@@ -1437,12 +1423,8 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     Equity leave_adjustment = 0;
     Equity other_adjustments = 0;
 
-    /* Check if static eval adjustments are enabled (compile-time and runtime) */
-    int use_adjustments = USE_STATIC_EVAL_ADJUSTMENTS &&
-                          !(gen->flags & MOVEGEN_FLAG_NO_STATIC_ADJUSTMENTS);
-
     /* Opening move: apply placement adjustment for vowels on hotspots */
-    if (use_adjustments && gen->board->tiles_played == 0) {
+    if (gen->board->tiles_played == 0) {
         /* Build tiles array for adjustment calculation */
         uint8_t new_tiles_length = rightstrip - leftstrip + 1;
         MachineLetter tiles[BOARD_DIM];
@@ -1464,21 +1446,14 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
             leave_adjustment = leave_map_get_current(&gen->leave_map);
         }
     } else {
-        if (use_adjustments) {
-            /* Endgame: use standard endgame adjustment instead of leave value.
-             * Compute player's remaining tiles after this move. */
-            Rack player_leave;
-            player_leave.total = gen->rack.total;
-            for (int i = 0; i < ALPHABET_SIZE; i++) {
-                player_leave.counts[i] = gen->rack.counts[i];
-            }
-            other_adjustments += standard_endgame_adjustment(&player_leave, gen->opp_rack);
-        } else {
-            /* Old behavior: add leave value even in endgame */
-            if (gen->klv != NULL) {
-                leave_adjustment = leave_map_get_current(&gen->leave_map);
-            }
+        /* Endgame: use standard endgame adjustment instead of leave value.
+         * Compute player's remaining tiles after this move. */
+        Rack player_leave;
+        player_leave.total = gen->rack.total;
+        for (int i = 0; i < ALPHABET_SIZE; i++) {
+            player_leave.counts[i] = gen->rack.counts[i];
         }
+        other_adjustments += standard_endgame_adjustment(&player_leave, gen->opp_rack);
     }
 
     equity += leave_adjustment + other_adjustments;
@@ -1990,9 +1965,9 @@ static void gen_for_anchor(MoveGenState *gen, int anchor_col) {
 #endif
 }
 
-void generate_moves_ex(const Board *board, const Rack *rack, const Rack *opp_rack,
-                       const uint32_t *kwg, const KLV *klv, const Bag *bag,
-                       MoveGenFlags flags, MoveList *moves) {
+void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
+                    const uint32_t *kwg, const KLV *klv, const Bag *bag,
+                    MoveList *moves) {
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
 
@@ -2010,7 +1985,6 @@ void generate_moves_ex(const Board *board, const Rack *rack, const Rack *opp_rac
     gen.kwg = kwg;
     gen.klv = klv;
     gen.opp_rack = opp_rack;
-    gen.flags = flags;
     gen.tiles_in_bag = bag ? bag->count : 0;
 
     /* Use first slot in moves array as best_move storage */
@@ -2205,13 +2179,6 @@ void generate_moves_ex(const Board *board, const Rack *rack, const Rack *opp_rac
 #if USE_TIMING
     timing_call_count++;
 #endif
-}
-
-/* Wrapper that calls generate_moves_ex with default flags */
-void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
-                    const uint32_t *kwg, const KLV *klv, const Bag *bag,
-                    MoveList *moves) {
-    generate_moves_ex(board, rack, opp_rack, kwg, klv, bag, MOVEGEN_FLAG_NONE, moves);
 }
 
 #if USE_TIMING
