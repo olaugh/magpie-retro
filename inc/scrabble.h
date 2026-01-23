@@ -73,8 +73,8 @@ typedef enum {
  * Static evaluation constants (matching original magpie static_eval_defs.h)
  * Converted from EQUITY_RESOLUTION=1000 to EQUITY_RESOLUTION=8 (eighths)
  */
-/* OPENING_HOTSPOT_PENALTY: -0.7 points in eighths */
-#define OPENING_HOTSPOT_PENALTY ((int)(-0.7 * 8))
+/* OPENING_HOTSPOT_PENALTY: -0.7 points in eighths (-6/8 = -0.75, closest to -0.7) */
+#define OPENING_HOTSPOT_PENALTY (-6)
 /* NON_OUTPLAY_CONSTANT_PENALTY: 10.0 points in eighths */
 #define NON_OUTPLAY_CONSTANT_PENALTY TO_EIGHTHS(10)
 

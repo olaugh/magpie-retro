@@ -169,8 +169,7 @@ static void init_opening_move_penalties(Board *board) {
             int word_mult = get_word_multiplier(bonus);
             int letter_mult = get_letter_multiplier(bonus);
             board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                (OPENING_HOTSPOT_PENALTY / 2) * (word_mult - 1) +
-                (OPENING_HOTSPOT_PENALTY / 2) * (letter_mult - 1);
+                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
         }
     }
     if (start_row < BOARD_DIM - 1) {
@@ -179,8 +178,7 @@ static void init_opening_move_penalties(Board *board) {
             int word_mult = get_word_multiplier(bonus);
             int letter_mult = get_letter_multiplier(bonus);
             board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                (OPENING_HOTSPOT_PENALTY / 2) * (word_mult - 1) +
-                (OPENING_HOTSPOT_PENALTY / 2) * (letter_mult - 1);
+                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
         }
     }
 
@@ -191,8 +189,7 @@ static void init_opening_move_penalties(Board *board) {
             int word_mult = get_word_multiplier(bonus);
             int letter_mult = get_letter_multiplier(bonus);
             board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                (OPENING_HOTSPOT_PENALTY / 2) * (word_mult - 1) +
-                (OPENING_HOTSPOT_PENALTY / 2) * (letter_mult - 1);
+                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
         }
     }
     if (start_col < BOARD_DIM - 1) {
@@ -201,8 +198,7 @@ static void init_opening_move_penalties(Board *board) {
             int word_mult = get_word_multiplier(bonus);
             int letter_mult = get_letter_multiplier(bonus);
             board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                (OPENING_HOTSPOT_PENALTY / 2) * (word_mult - 1) +
-                (OPENING_HOTSPOT_PENALTY / 2) * (letter_mult - 1);
+                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
         }
     }
 }
