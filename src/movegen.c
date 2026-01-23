@@ -142,6 +142,7 @@ typedef struct {
     const Board *board;
     const uint32_t *kwg;
     const KLV *klv;      /* Leave values (may be NULL) */
+    const Rack *opp_rack; /* Opponent rack for endgame adjustment (may be NULL) */
     Rack rack;           /* Mutable copy of player rack */
     Rack rack_shadow_right_copy;  /* Save rack state before shadow right */
     Move *best_move;     /* Track best move found so far */
@@ -246,9 +247,6 @@ typedef struct {
     Equity best_leaves[RACK_SIZE];
 } MoveGenState;
 
-/* Convert points to eighths for equity calculation */
-#define TO_EIGHTHS(x) ((x) * 8)
-
 /* Bingo bonus in eighths (50 points * 8) */
 #define BINGO_BONUS TO_EIGHTHS(50)
 
@@ -320,6 +318,83 @@ static inline uint8_t get_word_mult(uint8_t bonus) {
 static inline Equity get_tile_score(MachineLetter ml) {
     if (IS_BLANKED(ml)) return 0;
     return tile_scores[ml];
+}
+
+/*
+ * ===== Static Evaluation Functions =====
+ * Matching original magpie static_eval.h
+ */
+
+/* Get rack score (sum of tile values) */
+static Equity rack_get_score(const Rack *rack) {
+    Equity sum = 0;
+    for (int i = 0; i < ALPHABET_SIZE; i++) {
+        sum += rack->counts[i] * tile_scores[i];
+    }
+    return sum;
+}
+
+/* Placement adjustment for vowels on opening hotspots.
+ * Only applies when board is empty (opening move). */
+static Equity placement_adjustment(const MoveGenState *gen, int row_start,
+                                   int col_start, int dir, int tiles_length,
+                                   const MachineLetter *tiles) {
+    int start = (dir == DIR_HORIZONTAL) ? col_start : row_start;
+    int offset = dir * BOARD_DIM;
+
+    Equity penalty = 0;
+    for (int i = 0; i < tiles_length; i++) {
+        MachineLetter tile = tiles[i];
+        if (tile == PLAYED_THROUGH_MARKER) continue;
+
+        /* Unblank if blanked to check vowel status */
+        MachineLetter ml = UNBLANKED(tile);
+        if (IS_VOWEL[ml]) {
+            penalty += gen->board->opening_move_penalties[offset + start + i];
+        }
+    }
+    return penalty;
+}
+
+/* Endgame adjustment when player does NOT play out */
+static inline Equity endgame_nonoutplay_adjustment(Equity player_rack_score) {
+    return (-player_rack_score * 2) - NON_OUTPLAY_CONSTANT_PENALTY;
+}
+
+/* Endgame adjustment when player plays out */
+static inline Equity endgame_outplay_adjustment(Equity opponent_rack_score) {
+    return 2 * opponent_rack_score;
+}
+
+/* Standard endgame adjustment based on whether player plays out */
+static Equity standard_endgame_adjustment(const Rack *player_leave,
+                                          const Rack *opp_rack) {
+    if (player_leave && player_leave->total > 0) {
+        /* Not playing out - penalize by own rack score plus constant */
+        return endgame_nonoutplay_adjustment(rack_get_score(player_leave));
+    }
+    if (opp_rack) {
+        return endgame_outplay_adjustment(rack_get_score(opp_rack));
+    }
+    return 0;
+}
+
+/* Shadow endgame adjustment - uses lowest possible rack score for upper bound */
+static Equity shadow_endgame_adjustment(const MoveGenState *gen,
+                                         int tiles_played) {
+    if (gen->shadow_original_rack_total > tiles_played) {
+        /* Not playing out - compute lowest possible remaining rack score */
+        Equity lowest_rack_score = 0;
+        for (int i = tiles_played; i < gen->shadow_original_rack_total; i++) {
+            lowest_rack_score += gen->descending_tile_scores[i];
+        }
+        return endgame_nonoutplay_adjustment(lowest_rack_score);
+    }
+    /* Playing out - add 2x opponent rack */
+    if (gen->opp_rack) {
+        return endgame_outplay_adjustment(rack_get_score(gen->opp_rack));
+    }
+    return 0;
 }
 
 /* Check if column is empty */
@@ -581,21 +656,26 @@ static void shadow_record(MoveGenState *gen) {
     Equity score = tiles_played_score + main_word_contrib +
                    gen->shadow_perpendicular_additional_score + bingo_bonus;
 
-    /* For equity, add best possible leave value.
-     * Match actual move generation: add leave if KLV is available.
+    /* For equity, add leave value or endgame adjustment.
+     * Match actual move generation behavior.
      * Score is already in eighths (tile scores pre-multiplied). */
     Equity equity = score;
 #if USE_SHADOW_DEBUG
     shadow_debug_record_calls++;
 #endif
-    if (gen->klv != NULL) {
-        /* Compute leave size: original rack count minus tiles played */
-        int tiles_remaining = gen->shadow_original_rack_total - gen->tiles_played;
-        Equity leave = get_best_leave_for_tiles_remaining(gen, tiles_remaining);
-        equity += leave;
+    if (gen->tiles_in_bag > 0) {
+        /* Normal game: add best possible leave value */
+        if (gen->klv != NULL) {
+            int tiles_remaining = gen->shadow_original_rack_total - gen->tiles_played;
+            Equity leave = get_best_leave_for_tiles_remaining(gen, tiles_remaining);
+            equity += leave;
 #if USE_SHADOW_DEBUG
-        shadow_debug_leave_added++;
+            shadow_debug_leave_added++;
 #endif
+        }
+    } else {
+        /* Endgame: use shadow endgame adjustment (best case for upper bound) */
+        equity += shadow_endgame_adjustment(gen, gen->tiles_played);
     }
 
     if (equity > gen->highest_shadow_equity) {
@@ -1338,13 +1418,45 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
         score += BINGO_BONUS;
     }
 
-    /* Equity = score + leave_value (both in eighths of a point) */
+    /* Equity = score + adjustments (both in eighths of a point) */
     Equity equity = (Equity)score;
+    Equity leave_adjustment = 0;
+    Equity other_adjustments = 0;
 
-    /* Add leave value if KLV is available */
-    if (gen->klv != NULL) {
-        equity += leave_map_get_current(&gen->leave_map);
+    /* Opening move: apply placement adjustment for vowels on hotspots */
+    if (gen->board->tiles_played == 0) {
+        /* Build tiles array for adjustment calculation */
+        uint8_t new_tiles_length = rightstrip - leftstrip + 1;
+        MachineLetter tiles[BOARD_DIM];
+        for (int i = leftstrip; i <= rightstrip; i++) {
+            tiles[i - leftstrip] = gen->strip[i];
+        }
+
+        uint8_t new_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : leftstrip;
+        uint8_t new_col = (gen->dir == DIR_HORIZONTAL) ? leftstrip : gen->current_row;
+
+        other_adjustments += placement_adjustment(gen, new_row, new_col, gen->dir,
+                                                  new_tiles_length, tiles);
     }
+
+    /* Endgame vs normal: different leave/adjustment calculation */
+    if (gen->tiles_in_bag > 0) {
+        /* Normal game: add leave value if KLV is available */
+        if (gen->klv != NULL) {
+            leave_adjustment = leave_map_get_current(&gen->leave_map);
+        }
+    } else {
+        /* Endgame: use standard endgame adjustment instead of leave value.
+         * Compute player's remaining tiles after this move. */
+        Rack player_leave;
+        player_leave.total = gen->rack.total;
+        for (int i = 0; i < ALPHABET_SIZE; i++) {
+            player_leave.counts[i] = gen->rack.counts[i];
+        }
+        other_adjustments += standard_endgame_adjustment(&player_leave, gen->opp_rack);
+    }
+
+    equity += leave_adjustment + other_adjustments;
 
     /* Compute row/col for comparison */
     uint8_t new_row, new_col;
@@ -1853,8 +1965,9 @@ static void gen_for_anchor(MoveGenState *gen, int anchor_col) {
 #endif
 }
 
-void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
-                    const KLV *klv, const Bag *bag, MoveList *moves) {
+void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
+                    const uint32_t *kwg, const KLV *klv, const Bag *bag,
+                    MoveList *moves) {
     MoveGenState gen;
     memset(&gen, 0, sizeof(gen));
 
@@ -1871,6 +1984,7 @@ void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
     gen.board = board;
     gen.kwg = kwg;
     gen.klv = klv;
+    gen.opp_rack = opp_rack;
     gen.tiles_in_bag = bag ? bag->count : 0;
 
     /* Use first slot in moves array as best_move storage */

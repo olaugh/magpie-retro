@@ -40,8 +40,9 @@ extern void game_pass(GameState *game);
 extern int game_is_over(const GameState *game);
 extern void board_update_cross_sets(Board *board, const uint32_t *kwg);
 extern void board_update_cross_sets_for_move(Board *board, const uint32_t *kwg, const Move *move);
-extern void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
-                           const KLV *klv, const Bag *bag, MoveList *moves);
+extern void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
+                           const uint32_t *kwg, const KLV *klv, const Bag *bag,
+                           MoveList *moves);
 extern void sort_moves_by_score(MoveList *moves);
 
 /* Debug globals from movegen.c */
@@ -327,11 +328,13 @@ new_game:
 
         /* Generate moves for current player, tracking frame count */
         uint32_t start_frames = frame_counter;
+        const Rack *opp_rack = &game.players[1 - game.current_player].rack;
 #if COLLECT_MOVE_STATS
-        generate_moves(&game.board, rack, kwg_data, &klv, &game.bag, &moves);
+        generate_moves(&game.board, rack, opp_rack, kwg_data, &klv, &game.bag, &moves);
 #else
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
+                      opp_rack,
                       kwg_data, &klv, &game.bag, &moves);
 #endif
         last_move_frames = frame_counter - start_frames;

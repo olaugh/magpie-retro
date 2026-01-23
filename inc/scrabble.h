@@ -66,6 +66,18 @@ typedef enum {
 #define USE_BONUS_TRANSPOSE 0
 #endif
 
+/* Convert points to eighths for equity calculation */
+#define TO_EIGHTHS(x) ((x) * 8)
+
+/*
+ * Static evaluation constants (matching original magpie static_eval_defs.h)
+ * Converted from EQUITY_RESOLUTION=1000 to EQUITY_RESOLUTION=8 (eighths)
+ */
+/* OPENING_HOTSPOT_PENALTY: -0.7 points in eighths (-6/8 = -0.75, closest to -0.7) */
+#define OPENING_HOTSPOT_PENALTY (-6)
+/* NON_OUTPLAY_CONSTANT_PENALTY: 10.0 points in eighths */
+#define NON_OUTPLAY_CONSTANT_PENALTY TO_EIGHTHS(10)
+
 /* Cross-set: bitmap of valid letters for a square */
 typedef uint32_t CrossSet;
 #define TRIVIAL_CROSS_SET 0xFFFFFFFE  /* All letters valid (bit 0 unused) */
@@ -120,6 +132,11 @@ typedef struct {
     uint8_t h_bonuses[BOARD_SIZE];       /* Horizontal view bonuses */
     uint8_t v_bonuses[BOARD_SIZE];       /* Vertical view bonuses (transposed) */
 #endif
+
+    /* Opening move penalties for vowels on hotspot squares.
+     * Index: dir * BOARD_DIM + col (horizontal) or dir * BOARD_DIM + row (vertical).
+     * Applied when placing vowels adjacent to center on opening move. */
+    int8_t opening_move_penalties[BOARD_DIM * 2];
 
     uint8_t tiles_played;
 } Board;
@@ -179,6 +196,9 @@ typedef struct {
 /* Tile scores (standard Scrabble values) */
 extern const uint8_t TILE_SCORES[ALPHABET_SIZE];
 
+/* Vowel detection: 1 if letter is a vowel (A, E, I, O, U), 0 otherwise */
+extern const uint8_t IS_VOWEL[ALPHABET_SIZE];
+
 /* Tile distribution (standard Scrabble) */
 extern const uint8_t TILE_COUNTS[ALPHABET_SIZE];
 
@@ -215,8 +235,9 @@ struct KLV;
 typedef struct KLV KLV;
 
 /* Move generation */
-void generate_moves(const Board *board, const Rack *rack, const uint32_t *kwg,
-                    const KLV *klv, const Bag *bag, MoveList *moves);
+void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
+                    const uint32_t *kwg, const KLV *klv, const Bag *bag,
+                    MoveList *moves);
 void sort_moves_by_score(MoveList *moves);
 
 /* Scoring */

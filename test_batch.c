@@ -114,6 +114,7 @@ static void play_game(uint32_t seed) {
     while (!game_is_over(&game) && turn <= 200) {  /* Max 200 turns safety */
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
+                      &game.players[1 - game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
 
         if (moves.count > 0) {

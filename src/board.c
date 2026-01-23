@@ -8,9 +8,6 @@
 /* From libc.c */
 extern void *memset(void *s, int c, unsigned long n);
 
-/* Convert points to eighths for equity calculation */
-#define TO_EIGHTHS(x) ((x) * 8)
-
 /* Tile scores in eighths (pre-multiplied by 8 for equity calculation) */
 const uint8_t TILE_SCORES[ALPHABET_SIZE] = {
     TO_EIGHTHS(0),   /* Blank */
@@ -40,6 +37,37 @@ const uint8_t TILE_SCORES[ALPHABET_SIZE] = {
     TO_EIGHTHS(8),   /* X */
     TO_EIGHTHS(4),   /* Y */
     TO_EIGHTHS(10)   /* Z */
+};
+
+/* Vowel detection: A=1, E=5, I=9, O=15, U=21 */
+const uint8_t IS_VOWEL[ALPHABET_SIZE] = {
+    0,  /* Blank */
+    1,  /* A - vowel */
+    0,  /* B */
+    0,  /* C */
+    0,  /* D */
+    1,  /* E - vowel */
+    0,  /* F */
+    0,  /* G */
+    0,  /* H */
+    1,  /* I - vowel */
+    0,  /* J */
+    0,  /* K */
+    0,  /* L */
+    0,  /* M */
+    0,  /* N */
+    1,  /* O - vowel */
+    0,  /* P */
+    0,  /* Q */
+    0,  /* R */
+    0,  /* S */
+    0,  /* T */
+    1,  /* U - vowel */
+    0,  /* V */
+    0,  /* W */
+    0,  /* X */
+    0,  /* Y */
+    0   /* Z */
 };
 
 /* Standard Scrabble tile counts */
@@ -107,6 +135,65 @@ static void init_bonus_layout(void) {
 }
 
 /*
+ * Initialize opening move penalties for vowels on hotspot squares.
+ * Matches original magpie board.h update_opening_penalty logic.
+ * Penalizes placing vowels adjacent to center on opening move.
+ */
+static void init_opening_move_penalties(Board *board) {
+    const int start_row = BOARD_DIM / 2;  /* 7 */
+    const int start_col = BOARD_DIM / 2;  /* 7 */
+
+    /* Clear penalties */
+    for (int i = 0; i < BOARD_DIM * 2; i++) {
+        board->opening_move_penalties[i] = 0;
+    }
+
+    /* Horizontal direction (dir=0): check rows above and below center.
+     * Standard board only has DLS squares adjacent to center row.
+     * Apply half penalty per DLS to match original magpie formula. */
+    if (start_row > 0) {
+        for (int col = 0; col < BOARD_DIM; col++) {
+            uint8_t bonus = BONUS_LAYOUT[(start_row - 1) * BOARD_DIM + col];
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
+                    OPENING_HOTSPOT_PENALTY / 2;
+            }
+        }
+    }
+    if (start_row < BOARD_DIM - 1) {
+        for (int col = 0; col < BOARD_DIM; col++) {
+            uint8_t bonus = BONUS_LAYOUT[(start_row + 1) * BOARD_DIM + col];
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
+                    OPENING_HOTSPOT_PENALTY / 2;
+            }
+        }
+    }
+
+    /* Vertical direction (dir=1): check cols left and right of center.
+     * Standard board only has DLS squares adjacent to center column.
+     * Apply half penalty per DLS to match original magpie formula. */
+    if (start_col > 0) {
+        for (int row = 0; row < BOARD_DIM; row++) {
+            uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col - 1)];
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
+                    OPENING_HOTSPOT_PENALTY / 2;
+            }
+        }
+    }
+    if (start_col < BOARD_DIM - 1) {
+        for (int row = 0; row < BOARD_DIM; row++) {
+            uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col + 1)];
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
+                    OPENING_HOTSPOT_PENALTY / 2;
+            }
+        }
+    }
+}
+
+/*
  * Initialize a board to empty state with bonus squares
  */
 void board_init(Board *board) {
@@ -146,6 +233,9 @@ void board_init(Board *board) {
         }
     }
 #endif
+
+    /* Initialize opening move penalties */
+    init_opening_move_penalties(board);
 
     board->tiles_played = 0;
 }

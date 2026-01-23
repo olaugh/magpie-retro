@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
 
         generate_moves(&game.board,
                       &game.players[game.current_player].rack,
+                      &game.players[1 - game.current_player].rack,
                       kwg_data, &klv, &game.bag, &moves);
 
         clock_gettime(CLOCK_MONOTONIC, &end);
