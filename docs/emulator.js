@@ -1,11 +1,10 @@
 // ROM configuration - hybrid algorithm ROMs
-// Local ROMs: built with GCC 15 on macOS ARM
-// CI ROMs: built with GCC 13 on Linux x86_64 (dates injected by CI)
+// All ROMs built by CI with both GCC versions (dates injected by CI)
 const ROMS = {
-    'nwl23-local': { name: 'NWL23 (GCC15 __LOCAL_DATE__)', file: 'play/roms/nwl23-hybrid.bin' },
-    'nwl23-ci': { name: 'NWL23 (GCC13 __CI_DATE__)', file: 'play/roms/nwl23-hybrid-ci.bin' },
-    'csw24-local': { name: 'CSW24 (GCC15 __LOCAL_DATE__)', file: 'play/roms/csw24-hybrid.bin' },
-    'csw24-ci': { name: 'CSW24 (GCC13 __CI_DATE__)', file: 'play/roms/csw24-hybrid-ci.bin' }
+    'nwl23-gcc15': { name: 'NWL23 (GCC15 __GCC15_DATE__)', file: 'play/roms/nwl23-hybrid-gcc15.bin' },
+    'nwl23-gcc13': { name: 'NWL23 (GCC13 __GCC13_DATE__)', file: 'play/roms/nwl23-hybrid-gcc13.bin' },
+    'csw24-gcc15': { name: 'CSW24 (GCC15 __GCC15_DATE__)', file: 'play/roms/csw24-hybrid-gcc15.bin' },
+    'csw24-gcc13': { name: 'CSW24 (GCC13 __GCC13_DATE__)', file: 'play/roms/csw24-hybrid-gcc13.bin' }
 };
 
 // Constants
@@ -19,7 +18,7 @@ let fpsInterval = null;
 function getSelectedRom() {
     const params = new URLSearchParams(window.location.search);
     const rom = params.get('rom');
-    return (rom && ROMS[rom]) ? rom : 'nwl23-local';
+    return (rom && ROMS[rom]) ? rom : 'nwl23-gcc15';
 }
 
 document.addEventListener('DOMContentLoaded', function() {

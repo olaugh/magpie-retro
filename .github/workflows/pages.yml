@@ -39,7 +39,9 @@ jobs:
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           brew tap rosco-m68k/toolchain
           brew install rosco-m68k/toolchain/binutils-cross-m68k
+          # Install both GCC 13 and GCC 15 for comparison builds
           brew install rosco-m68k/toolchain/gcc-cross-m68k@13
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@15
 
       - name: Setup Bazel
         uses: bazel-contrib/setup-bazel@0.14.0
@@ -48,19 +50,40 @@ jobs:
           disk-cache: ${{ github.workflow }}
           repository-cache: true
 
-      - name: Build hybrid ROMs
+      # Build with GCC 13 first
+      - name: Build hybrid ROMs (GCC 13)
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          # Use GCC 13
+          export PATH="/home/linuxbrew/.linuxbrew/opt/gcc-cross-m68k@13/bin:$PATH"
+          make clean
           make nwl23-hybrid csw24-hybrid
+          # Save GCC 13 builds
+          cp out/scrabble-nwl23-hybrid.bin docs/play/roms/nwl23-hybrid-gcc13.bin
+          cp out/scrabble-csw24-hybrid.bin docs/play/roms/csw24-hybrid-gcc13.bin
+
+      # Build with GCC 15
+      - name: Build hybrid ROMs (GCC 15)
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          # Use GCC 15
+          export PATH="/home/linuxbrew/.linuxbrew/opt/gcc-cross-m68k@15/bin:$PATH"
+          make clean
+          make nwl23-hybrid csw24-hybrid
+          # Save GCC 15 builds
+          cp out/scrabble-nwl23-hybrid.bin docs/play/roms/nwl23-hybrid-gcc15.bin
+          cp out/scrabble-csw24-hybrid.bin docs/play/roms/csw24-hybrid-gcc15.bin
 
       - name: Build timing ROMs
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          export PATH="/home/linuxbrew/.linuxbrew/opt/gcc-cross-m68k@13/bin:$PATH"
           make timing-builds
 
       - name: Build debug builds (for disassembly)
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          export PATH="/home/linuxbrew/.linuxbrew/opt/gcc-cross-m68k@13/bin:$PATH"
           make debug-builds
 
       - name: Generate timing report
@@ -76,21 +99,15 @@ jobs:
           bazelisk build //:disasm_csw24_shadow
           cp -r bazel-bin/disasm_csw24_shadow docs/disassembly
 
-      - name: Copy CI-built ROMs to docs
-        run: |
-          cp out/scrabble-nwl23-hybrid.bin docs/play/roms/nwl23-hybrid-ci.bin
-          cp out/scrabble-csw24-hybrid.bin docs/play/roms/csw24-hybrid-ci.bin
-
       - name: Inject build timestamps
         run: |
-          # Get dates in YYMMDD format
-          CI_DATE=$(date +%y%m%d)
-          LOCAL_DATE=$(git log -1 --format="%ci" -- docs/play/roms/nwl23-hybrid.bin | cut -d' ' -f1 | sed 's/^20//' | tr -d '-')
+          # All ROMs are built today
+          BUILD_DATE=$(date +%y%m%d)
           BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
 
           # Replace placeholders in emulator.js and index.html
-          sed -i "s/__LOCAL_DATE__/${LOCAL_DATE}/g" docs/emulator.js docs/index.html
-          sed -i "s/__CI_DATE__/${CI_DATE}/g" docs/emulator.js docs/index.html
+          sed -i "s/__GCC13_DATE__/${BUILD_DATE}/g" docs/emulator.js docs/index.html
+          sed -i "s/__GCC15_DATE__/${BUILD_DATE}/g" docs/emulator.js docs/index.html
           sed -i "s/__BUILD_TIME__/${BUILD_TIME}/g" docs/index.html
 
       - name: Upload Pages artifact
