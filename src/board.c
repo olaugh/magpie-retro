@@ -134,20 +134,6 @@ static void init_bonus_layout(void) {
     }
 }
 
-/* Get letter multiplier from bonus type */
-static int get_letter_multiplier(uint8_t bonus) {
-    if (bonus == BONUS_DL) return 2;
-    if (bonus == BONUS_TL) return 3;
-    return 1;
-}
-
-/* Get word multiplier from bonus type */
-static int get_word_multiplier(uint8_t bonus) {
-    if (bonus == BONUS_DW || bonus == BONUS_CENTER) return 2;
-    if (bonus == BONUS_TW) return 3;
-    return 1;
-}
-
 /*
  * Initialize opening move penalties for vowels on hotspot squares.
  * Matches original magpie board.h update_opening_penalty logic.
@@ -162,43 +148,45 @@ static void init_opening_move_penalties(Board *board) {
         board->opening_move_penalties[i] = 0;
     }
 
-    /* Horizontal direction (dir=0): check rows above and below center */
+    /* Horizontal direction (dir=0): check rows above and below center.
+     * Standard board only has DLS squares adjacent to center row. */
     if (start_row > 0) {
         for (int col = 0; col < BOARD_DIM; col++) {
             uint8_t bonus = BONUS_LAYOUT[(start_row - 1) * BOARD_DIM + col];
-            int word_mult = get_word_multiplier(bonus);
-            int letter_mult = get_letter_multiplier(bonus);
-            board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
+                    OPENING_HOTSPOT_PENALTY;
+            }
         }
     }
     if (start_row < BOARD_DIM - 1) {
         for (int col = 0; col < BOARD_DIM; col++) {
             uint8_t bonus = BONUS_LAYOUT[(start_row + 1) * BOARD_DIM + col];
-            int word_mult = get_word_multiplier(bonus);
-            int letter_mult = get_letter_multiplier(bonus);
-            board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
+                    OPENING_HOTSPOT_PENALTY;
+            }
         }
     }
 
-    /* Vertical direction (dir=1): check cols left and right of center */
+    /* Vertical direction (dir=1): check cols left and right of center.
+     * Standard board only has DLS squares adjacent to center column. */
     if (start_col > 0) {
         for (int row = 0; row < BOARD_DIM; row++) {
             uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col - 1)];
-            int word_mult = get_word_multiplier(bonus);
-            int letter_mult = get_letter_multiplier(bonus);
-            board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
+                    OPENING_HOTSPOT_PENALTY;
+            }
         }
     }
     if (start_col < BOARD_DIM - 1) {
         for (int row = 0; row < BOARD_DIM; row++) {
             uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col + 1)];
-            int word_mult = get_word_multiplier(bonus);
-            int letter_mult = get_letter_multiplier(bonus);
-            board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                OPENING_HOTSPOT_PENALTY * ((word_mult - 1) + (letter_mult - 1)) / 2;
+            if (bonus == BONUS_DL) {
+                board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
+                    OPENING_HOTSPOT_PENALTY;
+            }
         }
     }
 }
