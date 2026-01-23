@@ -255,7 +255,8 @@ typedef struct {
 /*
  * MULT_SMALL: Multiply val by m where m is 1, 2, or 3.
  * Returns the result (does not modify val in place).
- * Works with any integer type. Uses adds to avoid 70-cycle MULS.
+ * Uses conditional expression - GCC optimizes this better than if-statements
+ * when m is a compile-time constant. Avoids 70-cycle MULS on 68000.
  */
 #if MULT_SMALL_DEBUG
 #define MULT_SMALL(val, m) \
@@ -447,7 +448,8 @@ static void insert_unrestricted_eff_letter_mult(MoveGenState *gen, uint16_t mult
 }
 
 /* Recalculate effective letter multipliers when word multiplier changes */
-static void maybe_recalc_effective_multipliers(MoveGenState *gen) {
+__attribute__((always_inline))
+static inline void maybe_recalc_effective_multipliers(MoveGenState *gen) {
     if (gen->last_word_multiplier == gen->shadow_word_multiplier) {
         return;
     }
@@ -467,7 +469,8 @@ static void maybe_recalc_effective_multipliers(MoveGenState *gen) {
 }
 
 /* Insert unrestricted multipliers for a column */
-static void insert_unrestricted_multipliers(MoveGenState *gen, int col) {
+__attribute__((always_inline))
+static inline void insert_unrestricted_multipliers(MoveGenState *gen, int col) {
     maybe_recalc_effective_multipliers(gen);
 
     uint8_t bonus = gen->row_bonuses[col];
@@ -492,8 +495,9 @@ static void insert_unrestricted_multipliers(MoveGenState *gen, int col) {
  * If we don't have the letter but have a blank, use the blank (score 0).
  * Returns 1 if restricted, 0 if unrestricted.
  */
-static int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
-                              uint8_t letter_mult, uint8_t word_mult, int col) {
+__attribute__((always_inline))
+static inline int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
+                                    uint8_t letter_mult, uint8_t word_mult, int col) {
     if (!is_single_bit(possible_tiles)) {
         return 0;  /* Multiple tiles possible - unrestricted */
     }
@@ -1395,10 +1399,13 @@ static uint16_t recursion_counter = 0;
  * 1. Incremental score tracking
  * 2. Recording valid moves
  * 3. Continuing recursion left, or crossing separator to go right
+ *
+ * Forced inline to avoid function call overhead on the hot path (~2.5M calls per game).
  */
-static void go_on(MoveGenState *gen, int col, MachineLetter letter,
-                  uint32_t next_node_index, int accepts,
-                  int leftstrip, int rightstrip) {
+__attribute__((always_inline))
+static inline void go_on(MoveGenState *gen, int col, MachineLetter letter,
+                         uint32_t next_node_index, int accepts,
+                         int leftstrip, int rightstrip) {
 
     uint8_t bonus = gen->row_bonuses[col];
     uint8_t letter_mult = 1;
