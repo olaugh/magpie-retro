@@ -149,13 +149,14 @@ static void init_opening_move_penalties(Board *board) {
     }
 
     /* Horizontal direction (dir=0): check rows above and below center.
-     * Standard board only has DLS squares adjacent to center row. */
+     * Standard board only has DLS squares adjacent to center row.
+     * Apply half penalty per DLS to match original magpie formula. */
     if (start_row > 0) {
         for (int col = 0; col < BOARD_DIM; col++) {
             uint8_t bonus = BONUS_LAYOUT[(start_row - 1) * BOARD_DIM + col];
             if (bonus == BONUS_DL) {
                 board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                    OPENING_HOTSPOT_PENALTY;
+                    OPENING_HOTSPOT_PENALTY / 2;
             }
         }
     }
@@ -164,19 +165,20 @@ static void init_opening_move_penalties(Board *board) {
             uint8_t bonus = BONUS_LAYOUT[(start_row + 1) * BOARD_DIM + col];
             if (bonus == BONUS_DL) {
                 board->opening_move_penalties[DIR_HORIZONTAL * BOARD_DIM + col] +=
-                    OPENING_HOTSPOT_PENALTY;
+                    OPENING_HOTSPOT_PENALTY / 2;
             }
         }
     }
 
     /* Vertical direction (dir=1): check cols left and right of center.
-     * Standard board only has DLS squares adjacent to center column. */
+     * Standard board only has DLS squares adjacent to center column.
+     * Apply half penalty per DLS to match original magpie formula. */
     if (start_col > 0) {
         for (int row = 0; row < BOARD_DIM; row++) {
             uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col - 1)];
             if (bonus == BONUS_DL) {
                 board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                    OPENING_HOTSPOT_PENALTY;
+                    OPENING_HOTSPOT_PENALTY / 2;
             }
         }
     }
@@ -185,7 +187,7 @@ static void init_opening_move_penalties(Board *board) {
             uint8_t bonus = BONUS_LAYOUT[row * BOARD_DIM + (start_col + 1)];
             if (bonus == BONUS_DL) {
                 board->opening_move_penalties[DIR_VERTICAL * BOARD_DIM + row] +=
-                    OPENING_HOTSPOT_PENALTY;
+                    OPENING_HOTSPOT_PENALTY / 2;
             }
         }
     }
