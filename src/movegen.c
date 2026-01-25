@@ -1397,7 +1397,9 @@ static int is_better_move(Equity new_equity, int16_t new_score,
     return 0;
 }
 
-/* Record a valid move - only keeps best by equity with tiebreaking */
+/* Record a valid move - only keeps best by equity with tiebreaking.
+ * Optimized to do early exit when equity < best, skipping expensive
+ * tiles array building and tiebreaking comparison for most calls. */
 static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     gen->move_count++;
 
@@ -1423,18 +1425,18 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     Equity leave_adjustment = 0;
     Equity other_adjustments = 0;
 
+    /* Compute row/col early - needed for opening adjustment and cheap */
+    uint8_t new_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : leftstrip;
+    uint8_t new_col = (gen->dir == DIR_HORIZONTAL) ? leftstrip : gen->current_row;
+    uint8_t new_tiles_length = rightstrip - leftstrip + 1;
+
     /* Opening move: apply placement adjustment for vowels on hotspots */
     if (gen->board->tiles_played == 0) {
         /* Build tiles array for adjustment calculation */
-        uint8_t new_tiles_length = rightstrip - leftstrip + 1;
         MachineLetter tiles[BOARD_DIM];
         for (int i = leftstrip; i <= rightstrip; i++) {
             tiles[i - leftstrip] = gen->strip[i];
         }
-
-        uint8_t new_row = (gen->dir == DIR_HORIZONTAL) ? gen->current_row : leftstrip;
-        uint8_t new_col = (gen->dir == DIR_HORIZONTAL) ? leftstrip : gen->current_row;
-
         other_adjustments += placement_adjustment(gen, new_row, new_col, gen->dir,
                                                   new_tiles_length, tiles);
     }
@@ -1458,24 +1460,20 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
 
     equity += leave_adjustment + other_adjustments;
 
-    /* Compute row/col for comparison */
-    uint8_t new_row, new_col;
-    if (gen->dir == DIR_HORIZONTAL) {
-        new_row = gen->current_row;
-        new_col = leftstrip;
-    } else {
-        new_row = leftstrip;
-        new_col = gen->current_row;
+    /* Early exit: if equity strictly less than best, this move cannot win.
+     * This skips the expensive tiles array building and full comparison
+     * for the majority of calls where the move is clearly worse. */
+    if (gen->best_equity != EQUITY_INITIAL_VALUE && equity < gen->best_equity) {
+        return;
     }
 
-    /* Build tiles array for tiebreaking comparison */
-    uint8_t new_tiles_length = rightstrip - leftstrip + 1;
+    /* Build tiles array only when equity >= best (potential winner) */
     MachineLetter new_tiles[BOARD_DIM];
     for (int i = leftstrip; i <= rightstrip; i++) {
         new_tiles[i - leftstrip] = gen->strip[i];
     }
 
-    /* Only record if better than current best (with tiebreaking) */
+    /* Full comparison with tiebreaking for equity ties */
     if (!is_better_move(equity, score, new_row, new_col, gen->dir,
                         gen->tiles_played, new_tiles_length, new_tiles, gen)) return;
 
@@ -1487,7 +1485,7 @@ static void record_move(MoveGenState *gen, int leftstrip, int rightstrip) {
     move->col_start = new_col;
     move->dir = gen->dir;
     move->tiles_played = gen->tiles_played;
-    move->tiles_length = rightstrip - leftstrip + 1;
+    move->tiles_length = new_tiles_length;
     move->score = score;  /* In eighths */
     move->equity = equity;
 
