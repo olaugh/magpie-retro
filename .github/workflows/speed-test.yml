@@ -95,10 +95,17 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Sanitize ref for artifact name
+        id: sanitize-test-ref
+        run: |
+          ref='${{ inputs.test_ref || github.ref_name }}'
+          safe="${ref//[\/\\:*?\"<>|]/-}"
+          echo "value=$safe" >> "$GITHUB_OUTPUT"
+
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-${{ replace(inputs.test_ref || github.ref_name, '/', '-') }}-${{ github.run_number }}
+          name: speed-test-${{ steps.sanitize-test-ref.outputs.value }}-${{ github.run_number }}
           path: results/
           retention-days: 30
 
@@ -174,9 +181,16 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Sanitize baseline ref for artifact name
+        id: sanitize-baseline-ref
+        run: |
+          ref='${{ inputs.baseline_ref }}'
+          safe="${ref//[\/\\:*?\"<>|]/-}"
+          echo "value=$safe" >> "$GITHUB_OUTPUT"
+
       - name: Upload baseline results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-baseline-${{ replace(inputs.baseline_ref, '/', '-') }}-${{ github.run_number }}
+          name: speed-test-baseline-${{ steps.sanitize-baseline-ref.outputs.value }}-${{ github.run_number }}
           path: results/
           retention-days: 30

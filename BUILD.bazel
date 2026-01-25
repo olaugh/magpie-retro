@@ -1,61 +1,174 @@
 # Scrabble for Sega Genesis - Main BUILD file
 
 load("//tools:disassembly.bzl", "disassembly_site")
+load("//tools:genesis.bzl", "genesis_rom")
 
 package(default_visibility = ["//visibility:public"])
 
 # ---------------------------------------------------------------------------
-# Pre-built ROMs (built via make, referenced as data)
+# Build Configuration Files
 # ---------------------------------------------------------------------------
 
-# To build ROMs: run `make` in the project root first
-# These filegroups reference the pre-built ROM files
-
 exports_files([
-    "out/scrabble-nwl23-shadow.bin",
-    "out/scrabble-nwl23-noshadow.bin",
-    "out/scrabble-nwl23-hybrid.bin",
-    "out/scrabble-csw24-shadow.bin",
-    "out/scrabble-csw24-noshadow.bin",
-    "out/scrabble-csw24-hybrid.bin",
-    "build/nwl23-shadow/scrabble.elf",
-    "build/nwl23-noshadow/scrabble.elf",
-    "build/csw24-shadow/scrabble.elf",
-    "build/csw24-noshadow/scrabble.elf",
-    # Debug builds (with DWARF symbols for disassembly)
-    "build/nwl23-shadow-debug/scrabble.elf",
-    "build/csw24-shadow-debug/scrabble.elf",
-    # Timing builds (with COLLECT_MOVE_STATS instrumentation)
-    "out/scrabble-nwl23-shadow-timing.bin",
-    "out/scrabble-csw24-shadow-timing.bin",
-    "out/scrabble-nwl23-noshadow-timing.bin",
-    "out/scrabble-csw24-noshadow-timing.bin",
-    "out/scrabble-nwl23-hybrid-timing.bin",
-    "out/scrabble-csw24-hybrid-timing.bin",
-    "build/nwl23-shadow-timing/scrabble.elf",
-    "build/csw24-shadow-timing/scrabble.elf",
-    "build/nwl23-noshadow-timing/scrabble.elf",
-    "build/csw24-noshadow-timing/scrabble.elf",
-    "build/nwl23-hybrid-timing/scrabble.elf",
-    "build/csw24-hybrid-timing/scrabble.elf",
-    # KLV data files
+    "linker.ld",
+    "linker_debug.ld",
     "data/NWL23.klv16",
     "data/CSW24.klv16",
+    "data/lexica/NWL23.kwg",
+    "data/lexica/CSW24.kwg",
 ])
+
+# ---------------------------------------------------------------------------
+# ROM Builds (built by Bazel using m68k-elf toolchain)
+# ---------------------------------------------------------------------------
+
+# NWL23 variants
+genesis_rom(
+    name = "nwl23-shadow",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = True,
+)
+
+genesis_rom(
+    name = "nwl23-noshadow",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = False,
+)
+
+genesis_rom(
+    name = "nwl23-hybrid",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = True,
+    use_hybrid = True,
+)
+
+# CSW24 variants
+genesis_rom(
+    name = "csw24-shadow",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = True,
+)
+
+genesis_rom(
+    name = "csw24-noshadow",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = False,
+)
+
+genesis_rom(
+    name = "csw24-hybrid",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = True,
+    use_hybrid = True,
+)
+
+# Timing variants (with instrumentation for profiling)
+genesis_rom(
+    name = "nwl23-shadow-timing",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = True,
+    collect_move_stats = True,
+)
+
+genesis_rom(
+    name = "nwl23-noshadow-timing",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = False,
+    collect_move_stats = True,
+)
+
+genesis_rom(
+    name = "nwl23-hybrid-timing",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = True,
+    use_hybrid = True,
+    collect_move_stats = True,
+)
+
+genesis_rom(
+    name = "csw24-shadow-timing",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = True,
+    collect_move_stats = True,
+)
+
+genesis_rom(
+    name = "csw24-noshadow-timing",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = False,
+    collect_move_stats = True,
+)
+
+genesis_rom(
+    name = "csw24-hybrid-timing",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = True,
+    use_hybrid = True,
+    collect_move_stats = True,
+)
+
+# Debug variants (with DWARF symbols for disassembly)
+genesis_rom(
+    name = "nwl23-shadow-debug",
+    lexicon = "NWL23",
+    kwg_file = "data/lexica/NWL23.kwg",
+    klv_file = "data/NWL23.klv16",
+    use_shadow = True,
+    debug = True,
+)
+
+genesis_rom(
+    name = "csw24-shadow-debug",
+    lexicon = "CSW24",
+    kwg_file = "data/lexica/CSW24.kwg",
+    klv_file = "data/CSW24.klv16",
+    use_shadow = True,
+    debug = True,
+)
+
+# ---------------------------------------------------------------------------
+# Convenience filegroups
+# ---------------------------------------------------------------------------
 
 filegroup(
     name = "roms_nwl23",
     srcs = [
-        "out/scrabble-nwl23-shadow.bin",
-        "out/scrabble-nwl23-noshadow.bin",
+        ":nwl23-shadow",
+        ":nwl23-noshadow",
+        ":nwl23-hybrid",
     ],
 )
 
 filegroup(
     name = "roms_csw24",
     srcs = [
-        "out/scrabble-csw24-shadow.bin",
-        "out/scrabble-csw24-noshadow.bin",
+        ":csw24-shadow",
+        ":csw24-noshadow",
+        ":csw24-hybrid",
     ],
 )
 
@@ -66,9 +179,6 @@ filegroup(
         ":roms_csw24",
     ],
 )
-
-# Note: Symbols header is in tests/gxtest/scrabble_symbols.h
-# To regenerate: m68k-elf-nm -n build/nwl23-shadow/scrabble.elf | python3 gxtest/tools/elf2sym.py --namespace Scrabble > tests/gxtest/scrabble_symbols.h
 
 # ---------------------------------------------------------------------------
 # Source files (for disassembly)
@@ -88,44 +198,18 @@ filegroup(
 # ---------------------------------------------------------------------------
 #
 # These generate browsable HTML sites with mixed C/assembly listings.
-# Useful for:
-#   - AI agents reviewing generated code
-#   - Performance analysis
-#   - Understanding compiler output
-#
 # Build with: bazel build //:disasm_nwl23_shadow
 # Output: bazel-bin/disasm_nwl23_shadow/ (directory with HTML files)
-#
-# IMPORTANT: The ELF files must be built with debug symbols (-g).
-# Run `make` first to generate the ELF files, then run bazel.
 
-# Debug builds (with DWARF symbols - recommended for disassembly)
-# Build these first: make debug-builds
 disassembly_site(
     name = "disasm_nwl23_shadow",
-    binary = "build/nwl23-shadow-debug/scrabble.elf",
+    binary = ":nwl23-shadow-debug_elf_out",
     srcs = [":genesis_sources"],
 )
 
 disassembly_site(
     name = "disasm_csw24_shadow",
-    binary = "build/csw24-shadow-debug/scrabble.elf",
+    binary = ":csw24-shadow-debug_elf_out",
     profile = "profiles/csw24-shadow.profile.json",
     srcs = [":genesis_sources"],
 )
-
-# Release builds (no DWARF - assembly only, no C source interleaving)
-disassembly_site(
-    name = "disasm_nwl23_shadow_release",
-    binary = "build/nwl23-shadow/scrabble.elf",
-    srcs = [":genesis_sources"],
-)
-
-disassembly_site(
-    name = "disasm_csw24_shadow_release",
-    binary = "build/csw24-shadow/scrabble.elf",
-    srcs = [":genesis_sources"],
-)
-
-# ---------------------------------------------------------------------------
-# Play Site (EmulatorJS-based web emulator)

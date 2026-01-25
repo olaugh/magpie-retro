@@ -16,3 +16,15 @@ py_binary(
     srcs = ["split_asm.py"],
     python_version = "PY3",
 )
+
+py_binary(
+    name = "kwg2c",
+    srcs = ["kwg2c.py"],
+    python_version = "PY3",
+)
+
+py_binary(
+    name = "klv2c",
+    srcs = ["klv2c.py"],
+    python_version = "PY3",
+)

@@ -1,0 +1,8 @@
+# Source files for Scrabble Genesis
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(glob([
+    "*.c",
+    "*.s",
+]))
