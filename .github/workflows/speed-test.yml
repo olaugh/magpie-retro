@@ -98,7 +98,7 @@ jobs:
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-${{ inputs.test_ref || github.ref_name }}-${{ github.run_number }}
+          name: speed-test-${{ replace(inputs.test_ref || github.ref_name, '/', '-') }}-${{ github.run_number }}
           path: results/
           retention-days: 30
 
@@ -177,6 +177,6 @@ jobs:
       - name: Upload baseline results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-baseline-${{ inputs.baseline_ref }}-${{ github.run_number }}
+          name: speed-test-baseline-${{ replace(inputs.baseline_ref, '/', '-') }}-${{ github.run_number }}
           path: results/
           retention-days: 30
