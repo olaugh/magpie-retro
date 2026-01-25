@@ -285,13 +285,39 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "</details>" >> $GITHUB_STEP_SUMMARY
 
+          elif [[ -f benchmark-results/timing_report.html ]] && [[ -f baseline-results/timing_report.html ]]; then
+            # Fallback: extract overall hybrid value from HTML when JSON is not available
+            # This handles comparisons against older commits that don't have JSON output
+            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Note: Using HTML fallback for commits without JSON summary._" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract the first "Hybrid (Actual)" value which is the overall average
+            test_hybrid=$(grep -oP 'Hybrid \(Actual\)</div><div class="value"[^>]*>\K[0-9.]+' benchmark-results/timing_report.html | head -1)
+            base_hybrid=$(grep -oP 'Hybrid \(Actual\)</div><div class="value"[^>]*>\K[0-9.]+' baseline-results/timing_report.html | head -1)
+
+            if [[ -n "$test_hybrid" ]] && [[ -n "$base_hybrid" ]]; then
+              echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+              change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
+              if (( $(echo "$change < 0" | bc -l) )); then
+                change_display="${change#-}% faster"
+              elif (( $(echo "$change > 0" | bc -l) )); then
+                change_display="+${change}% slower"
+              else
+                change_display="0%"
+              fi
+              echo "| **Overall Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "Could not extract timing data from HTML reports." >> $GITHUB_STEP_SUMMARY
+            fi
+
           else
             echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Summary JSON files not found. This may be because the timing report tool" >> $GITHUB_STEP_SUMMARY
-            echo "was built from a commit that doesn't include the summary JSON output." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Download the artifacts to view the full HTML reports." >> $GITHUB_STEP_SUMMARY
+            echo "Results files not found. Download the artifacts to view the reports." >> $GITHUB_STEP_SUMMARY
           fi
 
   # Generate summary when test and baseline are the same commit
