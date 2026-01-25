@@ -70,11 +70,11 @@ jobs:
     outputs:
       artifact_name: ${{ steps.sanitize-test-ref.outputs.artifact_name }}
     steps:
-      # Checkout with full history first, then switch to the target ref.
+      # Checkout with full history, then switch to the target ref.
       # This supports commit SHAs which actions/checkout can't fetch directly.
+      # Submodules are initialized after switching to the correct commit.
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
 
       - name: Checkout target ref
@@ -146,11 +146,11 @@ jobs:
     outputs:
       artifact_name: ${{ steps.sanitize-baseline-ref.outputs.artifact_name }}
     steps:
-      # Checkout with full history first, then switch to the target ref.
+      # Checkout with full history, then switch to the target ref.
       # This supports commit SHAs which actions/checkout can't fetch directly.
+      # Submodules are initialized after switching to the correct commit.
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
 
       - name: Checkout baseline ref
