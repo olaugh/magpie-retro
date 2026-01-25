@@ -902,5 +902,38 @@ int main(int argc, char* argv[]) {
     std::cerr << "\n";
     GenerateHTMLReport(results, output_path, num_games);
 
+    // Generate summary JSON for CI comparison
+    std::string json_path = output_path;
+    size_t dot_pos = json_path.rfind('.');
+    if (dot_pos != std::string::npos) {
+        json_path = json_path.substr(0, dot_pos) + "_summary.json";
+    } else {
+        json_path += "_summary.json";
+    }
+
+    std::ofstream json_out(json_path);
+    if (json_out) {
+        json_out << std::fixed << std::setprecision(1);
+        json_out << "{\n";
+        json_out << "  \"num_games\": " << num_games << ",\n";
+        json_out << "  \"lexicons\": [\n";
+        for (size_t i = 0; i < results.size(); i++) {
+            const auto& lex = results[i];
+            json_out << "    {\n";
+            json_out << "      \"name\": \"" << lex.name << "\",\n";
+            json_out << "      \"shadow_mean\": " << lex.shadow.overall.Mean() << ",\n";
+            json_out << "      \"noshadow_mean\": " << lex.noshadow.overall.Mean() << ",\n";
+            json_out << "      \"hybrid_mean\": " << lex.hybrid.overall.Mean() << ",\n";
+            json_out << "      \"move_count\": " << lex.hybrid.overall.count << "\n";
+            json_out << "    }" << (i + 1 < results.size() ? "," : "") << "\n";
+        }
+        json_out << "  ]\n";
+        json_out << "}\n";
+        json_out.close();
+        std::cerr << "Summary JSON written to: " << json_path << "\n";
+    } else {
+        std::cerr << "ERROR: Failed to open JSON summary output file: " << json_path << "\n";
+    }
+
     return 0;
 }

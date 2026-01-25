@@ -14,20 +14,67 @@ on:
         default: ''
         type: string
       baseline_ref:
-        description: 'Baseline ref to compare against (optional)'
+        description: 'Baseline ref to compare against (default: main)'
         required: false
-        default: ''
+        default: 'main'
         type: string
 
 jobs:
+  # First, check if test and baseline refs resolve to the same commit
+  check-refs:
+    runs-on: ubuntu-latest
+    outputs:
+      same_commit: ${{ steps.check.outputs.same_commit }}
+      test_sha: ${{ steps.check.outputs.test_sha }}
+      baseline_sha: ${{ steps.check.outputs.baseline_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if refs are equivalent
+        id: check
+        run: |
+          TEST_REF="${{ inputs.test_ref || github.ref }}"
+          BASELINE_REF="${{ inputs.baseline_ref }}"
+
+          # Resolve refs to commit SHAs
+          TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
+          BASELINE_SHA=$(git rev-parse "$BASELINE_REF" 2>/dev/null || echo "")
+
+          # Validate that both refs resolved successfully
+          if [[ -z "$TEST_SHA" ]]; then
+            echo "Error: Failed to resolve test ref '$TEST_REF' to a commit SHA." >&2
+            exit 1
+          fi
+          if [[ -z "$BASELINE_SHA" ]]; then
+            echo "Error: Failed to resolve baseline ref '$BASELINE_REF' to a commit SHA." >&2
+            exit 1
+          fi
+
+          echo "test_sha=$TEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
+
+          if [[ "$TEST_SHA" == "$BASELINE_SHA" ]]; then
+            echo "same_commit=true" >> "$GITHUB_OUTPUT"
+            echo "Test and baseline resolve to the same commit: $TEST_SHA"
+          else
+            echo "same_commit=false" >> "$GITHUB_OUTPUT"
+            echo "Test: $TEST_REF -> $TEST_SHA"
+            echo "Baseline: $BASELINE_REF -> $BASELINE_SHA"
+          fi
+
   benchmark:
     runs-on: ubuntu-latest
+    needs: check-refs
+    outputs:
+      artifact_name: ${{ steps.sanitize-test-ref.outputs.artifact_name }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.test_ref || github.ref }}
           submodules: recursive
-          fetch-depth: 0  # Full history for checking out any ref
+          fetch-depth: 0
 
       - name: Show test configuration
         run: |
@@ -35,7 +82,6 @@ jobs:
           echo "Commit: $(git rev-parse HEAD)"
           echo "Commit message: $(git log -1 --pretty=%s)"
 
-      # Install Homebrew and m68k-elf toolchain
       - name: Install Homebrew
         run: |
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -66,34 +112,10 @@ jobs:
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           mkdir -p results
 
-          # Run timing report and capture output
           bazelisk run //tests/gxtest:scrabble_timing_report -- \
             -n ${{ inputs.num_games }} \
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
-
-      - name: Generate summary
-        run: |
-          TEST_REF="${{ inputs.test_ref || github.ref }}"
-          COMMIT_SHA=$(git rev-parse HEAD)
-          # Sanitize commit message: escape pipes and remove newlines for table safety
-          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
-
-          echo "## Speed Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Ref:** \`${TEST_REF}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Games:** ${{ inputs.num_games }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Extract key metrics from output
-          if grep -q "frames" results/benchmark_output.txt; then
-            echo "### Results" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -E "(NWL23|CSW24|frames|Average|Total)" results/benchmark_output.txt | head -30 >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
 
       - name: Sanitize ref for artifact name
         id: sanitize-test-ref
@@ -101,18 +123,22 @@ jobs:
           ref='${{ inputs.test_ref || github.ref_name }}'
           safe="${ref//[\/\\:*?\"<>|]/-}"
           echo "value=$safe" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=speed-test-${safe}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-${{ steps.sanitize-test-ref.outputs.value }}-${{ github.run_number }}
+          name: ${{ steps.sanitize-test-ref.outputs.artifact_name }}
           path: results/
           retention-days: 30
 
-  # Optional baseline comparison job
+  # Only run baseline if it's a different commit
   baseline:
     runs-on: ubuntu-latest
-    if: inputs.baseline_ref != ''
+    needs: check-refs
+    if: needs.check-refs.outputs.same_commit != 'true'
+    outputs:
+      artifact_name: ${{ steps.sanitize-baseline-ref.outputs.artifact_name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,36 +187,150 @@ jobs:
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
 
-      - name: Generate baseline summary
-        run: |
-          COMMIT_SHA=$(git rev-parse HEAD)
-          # Sanitize commit message: escape pipes and remove newlines for safety
-          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
-
-          echo "## Baseline Results (${{ inputs.baseline_ref }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Ref:** \`${{ inputs.baseline_ref }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if grep -q "frames" results/benchmark_output.txt; then
-            echo "### Results" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep -E "(NWL23|CSW24|frames|Average|Total)" results/benchmark_output.txt | head -30 >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Sanitize baseline ref for artifact name
         id: sanitize-baseline-ref
         run: |
           ref='${{ inputs.baseline_ref }}'
           safe="${ref//[\/\\:*?\"<>|]/-}"
           echo "value=$safe" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=speed-test-baseline-${safe}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload baseline results
         uses: actions/upload-artifact@v4
         with:
-          name: speed-test-baseline-${{ steps.sanitize-baseline-ref.outputs.value }}-${{ github.run_number }}
+          name: ${{ steps.sanitize-baseline-ref.outputs.artifact_name }}
           path: results/
           retention-days: 30
+
+  # Generate comparison when we have both results
+  compare:
+    runs-on: ubuntu-latest
+    needs: [check-refs, benchmark, baseline]
+    if: needs.check-refs.outputs.same_commit != 'true'
+    steps:
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.benchmark.outputs.artifact_name }}
+          path: benchmark-results
+
+      - name: Download baseline results
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.baseline.outputs.artifact_name }}
+          path: baseline-results
+
+      - name: Generate comparison summary
+        run: |
+          # Note: jq and bc are pre-installed on ubuntu-latest runners
+          TEST_REF="${{ inputs.test_ref || github.ref }}"
+          BASELINE_REF="${{ inputs.baseline_ref }}"
+
+          if [[ -f benchmark-results/timing_report_summary.json ]] && [[ -f baseline-results/timing_report_summary.json ]]; then
+            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+            # Dynamically extract lexicon names from JSON
+            lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
+            for lex in $lexicons; do
+              test_hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' benchmark-results/timing_report_summary.json)
+              base_hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' baseline-results/timing_report_summary.json)
+
+              if [[ "$test_hybrid" != "null" ]] && [[ "$base_hybrid" != "null" ]] && [[ "$base_hybrid" != "0" ]]; then
+                change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
+                if (( $(echo "$change < 0" | bc -l) )); then
+                  # Remove leading minus sign for display
+                  change_display="${change#-}% faster"
+                elif (( $(echo "$change > 0" | bc -l) )); then
+                  change_display="+${change}% slower"
+                else
+                  change_display="0%"
+                fi
+                echo "| **${lex} Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Detailed Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Test Results (${TEST_REF})</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat benchmark-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Baseline Results (${BASELINE_REF})</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat baseline-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+          else
+            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Summary JSON files not found. This may be because the timing report tool" >> $GITHUB_STEP_SUMMARY
+            echo "was built from a commit that doesn't include the summary JSON output." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the artifacts to view the full HTML reports." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Generate summary when test and baseline are the same commit
+  summary:
+    runs-on: ubuntu-latest
+    needs: [check-refs, benchmark]
+    if: needs.check-refs.outputs.same_commit == 'true'
+    steps:
+      - name: Download benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.benchmark.outputs.artifact_name }}
+          path: benchmark-results
+
+      - name: Generate summary
+        run: |
+          # Note: jq is pre-installed on ubuntu-latest runners
+          TEST_REF="${{ inputs.test_ref || github.ref }}"
+
+          echo "## Performance Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Ref:** \`${TEST_REF}\` (commit: \`${{ needs.check-refs.outputs.test_sha }}\`)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Note: Test and baseline refs resolve to the same commit, so no comparison is shown._" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -f benchmark-results/timing_report_summary.json ]]; then
+            echo "| Lexicon | Hybrid Mean | Shadow Mean | NoShadow Mean | Moves |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------------|-------------|---------------|-------|" >> $GITHUB_STEP_SUMMARY
+
+            # Dynamically extract lexicon names from JSON
+            lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
+            for lex in $lexicons; do
+              hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' benchmark-results/timing_report_summary.json)
+              shadow=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .shadow_mean' benchmark-results/timing_report_summary.json)
+              noshadow=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .noshadow_mean' benchmark-results/timing_report_summary.json)
+              moves=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .move_count' benchmark-results/timing_report_summary.json)
+
+              if [[ "$hybrid" != "null" ]]; then
+                echo "| **${lex}** | ${hybrid} frames | ${shadow} frames | ${noshadow} frames | ${moves} |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Full JSON Summary</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat benchmark-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Summary JSON file not found. Download the artifact to view the full HTML report." >> $GITHUB_STEP_SUMMARY
+          fi
