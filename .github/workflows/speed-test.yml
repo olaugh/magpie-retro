@@ -70,11 +70,17 @@ jobs:
     outputs:
       artifact_name: ${{ steps.sanitize-test-ref.outputs.artifact_name }}
     steps:
+      # Checkout with full history, then switch to the target ref.
+      # This supports commit SHAs which actions/checkout can't fetch directly.
+      # Submodules are initialized after switching to the correct commit.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.test_ref || github.ref }}
-          submodules: recursive
           fetch-depth: 0
+
+      - name: Checkout target ref
+        run: |
+          git checkout ${{ needs.check-refs.outputs.test_sha }}
+          git submodule update --init --recursive
 
       - name: Show test configuration
         run: |
@@ -140,11 +146,17 @@ jobs:
     outputs:
       artifact_name: ${{ steps.sanitize-baseline-ref.outputs.artifact_name }}
     steps:
+      # Checkout with full history, then switch to the target ref.
+      # This supports commit SHAs which actions/checkout can't fetch directly.
+      # Submodules are initialized after switching to the correct commit.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.baseline_ref }}
-          submodules: recursive
           fetch-depth: 0
+
+      - name: Checkout baseline ref
+        run: |
+          git checkout ${{ needs.check-refs.outputs.baseline_sha }}
+          git submodule update --init --recursive
 
       - name: Show baseline configuration
         run: |
