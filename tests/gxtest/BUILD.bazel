@@ -57,16 +57,16 @@ cc_test(
     # Exclude Validation.* and Hybrid.* tests (run separately)
     args = ["--gtest_filter=-Validation.*:Hybrid.*"],
     data = [
-        "//:out/scrabble-nwl23-shadow.bin",
-        "//:out/scrabble-nwl23-noshadow.bin",
-        "//:out/scrabble-csw24-shadow.bin",
-        "//:out/scrabble-csw24-noshadow.bin",
+        "//:nwl23-shadow",
+        "//:nwl23-noshadow",
+        "//:csw24-shadow",
+        "//:csw24-noshadow",
     ],
     defines = [
-        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
-        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
-        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
-        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+        'ROM_NWL23_SHADOW=\\"nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"nwl23-noshadow.bin\\"',
+        'ROM_CSW24_SHADOW=\\"csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"csw24-noshadow.bin\\"',
     ] + select({
         ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
         "//conditions:default": [],
@@ -82,7 +82,6 @@ cc_test(
 # Validates that hybrid ROMs:
 # 1. Produce identical scores to shadow and noshadow variants
 # 2. Have total runtime at least as fast as min(shadow, noshadow) across all games
-# Build ROMs with: make nwl23-hybrid csw24-hybrid nwl23-shadow nwl23-noshadow csw24-shadow csw24-noshadow
 # Run with: bazel test //tests/gxtest:scrabble_hybrid_test
 # ---------------------------------------------------------------------------
 
@@ -94,20 +93,20 @@ cc_test(
     ],
     args = ["--gtest_filter=Hybrid.*"],
     data = [
-        "//:out/scrabble-nwl23-shadow.bin",
-        "//:out/scrabble-nwl23-noshadow.bin",
-        "//:out/scrabble-nwl23-hybrid.bin",
-        "//:out/scrabble-csw24-shadow.bin",
-        "//:out/scrabble-csw24-noshadow.bin",
-        "//:out/scrabble-csw24-hybrid.bin",
+        "//:nwl23-shadow",
+        "//:nwl23-noshadow",
+        "//:nwl23-hybrid",
+        "//:csw24-shadow",
+        "//:csw24-noshadow",
+        "//:csw24-hybrid",
     ],
     defines = [
-        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
-        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
-        'ROM_NWL23_HYBRID=\\"out/scrabble-nwl23-hybrid.bin\\"',
-        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
-        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
-        'ROM_CSW24_HYBRID=\\"out/scrabble-csw24-hybrid.bin\\"',
+        'ROM_NWL23_SHADOW=\\"nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"nwl23-noshadow.bin\\"',
+        'ROM_NWL23_HYBRID=\\"nwl23-hybrid.bin\\"',
+        'ROM_CSW24_SHADOW=\\"csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"csw24-noshadow.bin\\"',
+        'ROM_CSW24_HYBRID=\\"csw24-hybrid.bin\\"',
     ] + select({
         ":strict_frames": ["STRICT_FRAME_ASSERTIONS"],
         "//conditions:default": [],
@@ -122,7 +121,6 @@ cc_test(
 
 # ---------------------------------------------------------------------------
 # 100-Game Validation Test (for MULT_SMALL debug assertions)
-# Build ROMs with: make debug
 # Run with: bazel test //tests/gxtest:scrabble_validation_test
 # ---------------------------------------------------------------------------
 
@@ -134,16 +132,16 @@ cc_test(
     ],
     args = ["--gtest_filter=Validation.*"],
     data = [
-        "//:out/scrabble-nwl23-shadow.bin",
-        "//:out/scrabble-nwl23-noshadow.bin",
-        "//:out/scrabble-csw24-shadow.bin",
-        "//:out/scrabble-csw24-noshadow.bin",
+        "//:nwl23-shadow",
+        "//:nwl23-noshadow",
+        "//:csw24-shadow",
+        "//:csw24-noshadow",
     ],
     defines = [
-        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
-        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
-        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
-        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+        'ROM_NWL23_SHADOW=\\"nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"nwl23-noshadow.bin\\"',
+        'ROM_CSW24_SHADOW=\\"csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"csw24-noshadow.bin\\"',
     ],
     # Longer timeout for 100 games
     timeout = "long",
@@ -155,7 +153,6 @@ cc_test(
 
 # ---------------------------------------------------------------------------
 # 1000-Game Timing Benchmark
-# Build ROMs with: make timing-builds
 # Run with: bazel test //tests/gxtest:scrabble_timing_test
 # ---------------------------------------------------------------------------
 
@@ -166,40 +163,40 @@ cc_test(
     ],
     data = [
         # Shadow timing ROMs and ELFs
-        "//:out/scrabble-nwl23-shadow-timing.bin",
-        "//:out/scrabble-csw24-shadow-timing.bin",
-        "//:build/nwl23-shadow-timing/scrabble.elf",
-        "//:build/csw24-shadow-timing/scrabble.elf",
+        "//:nwl23-shadow-timing",
+        "//:csw24-shadow-timing",
+        "//:nwl23-shadow-timing_elf_out",
+        "//:csw24-shadow-timing_elf_out",
         # NoShadow timing ROMs and ELFs
-        "//:out/scrabble-nwl23-noshadow-timing.bin",
-        "//:out/scrabble-csw24-noshadow-timing.bin",
-        "//:build/nwl23-noshadow-timing/scrabble.elf",
-        "//:build/csw24-noshadow-timing/scrabble.elf",
+        "//:nwl23-noshadow-timing",
+        "//:csw24-noshadow-timing",
+        "//:nwl23-noshadow-timing_elf_out",
+        "//:csw24-noshadow-timing_elf_out",
         # Hybrid timing ROMs and ELFs
-        "//:out/scrabble-nwl23-hybrid-timing.bin",
-        "//:out/scrabble-csw24-hybrid-timing.bin",
-        "//:build/nwl23-hybrid-timing/scrabble.elf",
-        "//:build/csw24-hybrid-timing/scrabble.elf",
+        "//:nwl23-hybrid-timing",
+        "//:csw24-hybrid-timing",
+        "//:nwl23-hybrid-timing_elf_out",
+        "//:csw24-hybrid-timing_elf_out",
         # KLV files for leave value computation
         "//:data/NWL23.klv16",
         "//:data/CSW24.klv16",
     ],
     defines = [
         # Shadow timing
-        'ROM_NWL23_SHADOW_TIMING=\\"out/scrabble-nwl23-shadow-timing.bin\\"',
-        'ROM_CSW24_SHADOW_TIMING=\\"out/scrabble-csw24-shadow-timing.bin\\"',
-        'ELF_NWL23_SHADOW_TIMING=\\"build/nwl23-shadow-timing/scrabble.elf\\"',
-        'ELF_CSW24_SHADOW_TIMING=\\"build/csw24-shadow-timing/scrabble.elf\\"',
+        'ROM_NWL23_SHADOW_TIMING=\\"nwl23-shadow-timing.bin\\"',
+        'ROM_CSW24_SHADOW_TIMING=\\"csw24-shadow-timing.bin\\"',
+        'ELF_NWL23_SHADOW_TIMING=\\"nwl23-shadow-timing_elf.elf\\"',
+        'ELF_CSW24_SHADOW_TIMING=\\"csw24-shadow-timing_elf.elf\\"',
         # NoShadow timing
-        'ROM_NWL23_NOSHADOW_TIMING=\\"out/scrabble-nwl23-noshadow-timing.bin\\"',
-        'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
-        'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
-        'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        'ROM_NWL23_NOSHADOW_TIMING=\\"nwl23-noshadow-timing.bin\\"',
+        'ROM_CSW24_NOSHADOW_TIMING=\\"csw24-noshadow-timing.bin\\"',
+        'ELF_NWL23_NOSHADOW_TIMING=\\"nwl23-noshadow-timing_elf.elf\\"',
+        'ELF_CSW24_NOSHADOW_TIMING=\\"csw24-noshadow-timing_elf.elf\\"',
         # Hybrid timing
-        'ROM_NWL23_HYBRID_TIMING=\\"out/scrabble-nwl23-hybrid-timing.bin\\"',
-        'ROM_CSW24_HYBRID_TIMING=\\"out/scrabble-csw24-hybrid-timing.bin\\"',
-        'ELF_NWL23_HYBRID_TIMING=\\"build/nwl23-hybrid-timing/scrabble.elf\\"',
-        'ELF_CSW24_HYBRID_TIMING=\\"build/csw24-hybrid-timing/scrabble.elf\\"',
+        'ROM_NWL23_HYBRID_TIMING=\\"nwl23-hybrid-timing.bin\\"',
+        'ROM_CSW24_HYBRID_TIMING=\\"csw24-hybrid-timing.bin\\"',
+        'ELF_NWL23_HYBRID_TIMING=\\"nwl23-hybrid-timing_elf.elf\\"',
+        'ELF_CSW24_HYBRID_TIMING=\\"csw24-hybrid-timing_elf.elf\\"',
         # KLV files
         'KLV_NWL23=\\"data/NWL23.klv16\\"',
         'KLV_CSW24=\\"data/CSW24.klv16\\"',
@@ -217,7 +214,6 @@ cc_test(
 
 # ---------------------------------------------------------------------------
 # HTML Timing Report Generator
-# Build ROMs with: make timing-builds
 # Run with: bazel run //tests/gxtest:scrabble_timing_report -- -n 100 -o report.html
 # ---------------------------------------------------------------------------
 
@@ -228,40 +224,40 @@ cc_binary(
     ],
     data = [
         # Shadow timing ROMs and ELFs
-        "//:out/scrabble-nwl23-shadow-timing.bin",
-        "//:out/scrabble-csw24-shadow-timing.bin",
-        "//:build/nwl23-shadow-timing/scrabble.elf",
-        "//:build/csw24-shadow-timing/scrabble.elf",
+        "//:nwl23-shadow-timing",
+        "//:csw24-shadow-timing",
+        "//:nwl23-shadow-timing_elf_out",
+        "//:csw24-shadow-timing_elf_out",
         # NoShadow timing ROMs and ELFs
-        "//:out/scrabble-nwl23-noshadow-timing.bin",
-        "//:out/scrabble-csw24-noshadow-timing.bin",
-        "//:build/nwl23-noshadow-timing/scrabble.elf",
-        "//:build/csw24-noshadow-timing/scrabble.elf",
+        "//:nwl23-noshadow-timing",
+        "//:csw24-noshadow-timing",
+        "//:nwl23-noshadow-timing_elf_out",
+        "//:csw24-noshadow-timing_elf_out",
         # Hybrid timing ROMs and ELFs
-        "//:out/scrabble-nwl23-hybrid-timing.bin",
-        "//:out/scrabble-csw24-hybrid-timing.bin",
-        "//:build/nwl23-hybrid-timing/scrabble.elf",
-        "//:build/csw24-hybrid-timing/scrabble.elf",
+        "//:nwl23-hybrid-timing",
+        "//:csw24-hybrid-timing",
+        "//:nwl23-hybrid-timing_elf_out",
+        "//:csw24-hybrid-timing_elf_out",
         # KLV files for leave value computation
         "//:data/NWL23.klv16",
         "//:data/CSW24.klv16",
     ],
     defines = [
         # Shadow timing
-        'ROM_NWL23_SHADOW_TIMING=\\"out/scrabble-nwl23-shadow-timing.bin\\"',
-        'ROM_CSW24_SHADOW_TIMING=\\"out/scrabble-csw24-shadow-timing.bin\\"',
-        'ELF_NWL23_SHADOW_TIMING=\\"build/nwl23-shadow-timing/scrabble.elf\\"',
-        'ELF_CSW24_SHADOW_TIMING=\\"build/csw24-shadow-timing/scrabble.elf\\"',
+        'ROM_NWL23_SHADOW_TIMING=\\"nwl23-shadow-timing.bin\\"',
+        'ROM_CSW24_SHADOW_TIMING=\\"csw24-shadow-timing.bin\\"',
+        'ELF_NWL23_SHADOW_TIMING=\\"nwl23-shadow-timing_elf.elf\\"',
+        'ELF_CSW24_SHADOW_TIMING=\\"csw24-shadow-timing_elf.elf\\"',
         # NoShadow timing
-        'ROM_NWL23_NOSHADOW_TIMING=\\"out/scrabble-nwl23-noshadow-timing.bin\\"',
-        'ROM_CSW24_NOSHADOW_TIMING=\\"out/scrabble-csw24-noshadow-timing.bin\\"',
-        'ELF_NWL23_NOSHADOW_TIMING=\\"build/nwl23-noshadow-timing/scrabble.elf\\"',
-        'ELF_CSW24_NOSHADOW_TIMING=\\"build/csw24-noshadow-timing/scrabble.elf\\"',
+        'ROM_NWL23_NOSHADOW_TIMING=\\"nwl23-noshadow-timing.bin\\"',
+        'ROM_CSW24_NOSHADOW_TIMING=\\"csw24-noshadow-timing.bin\\"',
+        'ELF_NWL23_NOSHADOW_TIMING=\\"nwl23-noshadow-timing_elf.elf\\"',
+        'ELF_CSW24_NOSHADOW_TIMING=\\"csw24-noshadow-timing_elf.elf\\"',
         # Hybrid timing
-        'ROM_NWL23_HYBRID_TIMING=\\"out/scrabble-nwl23-hybrid-timing.bin\\"',
-        'ROM_CSW24_HYBRID_TIMING=\\"out/scrabble-csw24-hybrid-timing.bin\\"',
-        'ELF_NWL23_HYBRID_TIMING=\\"build/nwl23-hybrid-timing/scrabble.elf\\"',
-        'ELF_CSW24_HYBRID_TIMING=\\"build/csw24-hybrid-timing/scrabble.elf\\"',
+        'ROM_NWL23_HYBRID_TIMING=\\"nwl23-hybrid-timing.bin\\"',
+        'ROM_CSW24_HYBRID_TIMING=\\"csw24-hybrid-timing.bin\\"',
+        'ELF_NWL23_HYBRID_TIMING=\\"nwl23-hybrid-timing_elf.elf\\"',
+        'ELF_CSW24_HYBRID_TIMING=\\"csw24-hybrid-timing_elf.elf\\"',
         # KLV files
         'KLV_NWL23=\\"data/NWL23.klv16\\"',
         'KLV_CSW24=\\"data/CSW24.klv16\\"',
@@ -283,23 +279,23 @@ cc_test(
         "scrabble_symbols.h",
     ],
     data = [
-        "//:out/scrabble-nwl23-shadow.bin",
-        "//:out/scrabble-nwl23-noshadow.bin",
-        "//:out/scrabble-csw24-shadow.bin",
-        "//:out/scrabble-csw24-noshadow.bin",
-        "//:build/nwl23-shadow/scrabble.elf",
-        "//:build/nwl23-noshadow/scrabble.elf",
-        "//:build/csw24-shadow/scrabble.elf",
-        "//:build/csw24-noshadow/scrabble.elf",
+        "//:nwl23-shadow",
+        "//:nwl23-noshadow",
+        "//:csw24-shadow",
+        "//:csw24-noshadow",
+        "//:nwl23-shadow_elf_out",
+        "//:nwl23-noshadow_elf_out",
+        "//:csw24-shadow_elf_out",
+        "//:csw24-noshadow_elf_out",
         # Debug ELFs with DWARF symbols (for address histogram export)
-        "//:build/nwl23-shadow-debug/scrabble.elf",
-        "//:build/csw24-shadow-debug/scrabble.elf",
+        "//:nwl23-shadow-debug_elf_out",
+        "//:csw24-shadow-debug_elf_out",
     ],
     defines = [
-        'ROM_NWL23_SHADOW=\\"out/scrabble-nwl23-shadow.bin\\"',
-        'ROM_NWL23_NOSHADOW=\\"out/scrabble-nwl23-noshadow.bin\\"',
-        'ROM_CSW24_SHADOW=\\"out/scrabble-csw24-shadow.bin\\"',
-        'ROM_CSW24_NOSHADOW=\\"out/scrabble-csw24-noshadow.bin\\"',
+        'ROM_NWL23_SHADOW=\\"nwl23-shadow.bin\\"',
+        'ROM_NWL23_NOSHADOW=\\"nwl23-noshadow.bin\\"',
+        'ROM_CSW24_SHADOW=\\"csw24-shadow.bin\\"',
+        'ROM_CSW24_NOSHADOW=\\"csw24-noshadow.bin\\"',
     ],
     # Manual tag excludes this from `bazel test //...` - must be run explicitly
     tags = ["manual"],
