@@ -6,8 +6,8 @@ on:
       num_games:
         description: 'Number of games to run per variant'
         required: false
-        default: '50'
-        type: string
+        default: 50
+        type: number
       test_ref:
         description: 'Git ref to test (branch, tag, or commit SHA). Leave empty for current branch.'
         required: false
@@ -76,16 +76,15 @@ jobs:
         run: |
           TEST_REF="${{ inputs.test_ref || github.ref }}"
           COMMIT_SHA=$(git rev-parse HEAD)
-          COMMIT_MSG=$(git log -1 --pretty=%s)
+          # Sanitize commit message: escape pipes and remove newlines for table safety
+          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
 
           echo "## Speed Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Ref** | \`${TEST_REF}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | \`${COMMIT_SHA:0:7}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Message** | ${COMMIT_MSG} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Games** | ${{ inputs.num_games }} |" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** \`${TEST_REF}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Games:** ${{ inputs.num_games }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Extract key metrics from output
@@ -158,15 +157,14 @@ jobs:
       - name: Generate baseline summary
         run: |
           COMMIT_SHA=$(git rev-parse HEAD)
-          COMMIT_MSG=$(git log -1 --pretty=%s)
+          # Sanitize commit message: escape pipes and remove newlines for safety
+          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
 
           echo "## Baseline Results (${{ inputs.baseline_ref }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Ref** | \`${{ inputs.baseline_ref }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | \`${COMMIT_SHA:0:7}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Message** | ${COMMIT_MSG} |" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** \`${{ inputs.baseline_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if grep -q "frames" results/benchmark_output.txt; then
