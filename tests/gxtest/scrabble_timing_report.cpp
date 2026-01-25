@@ -913,6 +913,7 @@ int main(int argc, char* argv[]) {
 
     std::ofstream json_out(json_path);
     if (json_out) {
+        json_out << std::fixed << std::setprecision(1);
         json_out << "{\n";
         json_out << "  \"num_games\": " << num_games << ",\n";
         json_out << "  \"lexicons\": [\n";
@@ -920,7 +921,7 @@ int main(int argc, char* argv[]) {
             const auto& lex = results[i];
             json_out << "    {\n";
             json_out << "      \"name\": \"" << lex.name << "\",\n";
-            json_out << "      \"shadow_mean\": " << std::fixed << std::setprecision(1) << lex.shadow.overall.Mean() << ",\n";
+            json_out << "      \"shadow_mean\": " << lex.shadow.overall.Mean() << ",\n";
             json_out << "      \"noshadow_mean\": " << lex.noshadow.overall.Mean() << ",\n";
             json_out << "      \"hybrid_mean\": " << lex.hybrid.overall.Mean() << ",\n";
             json_out << "      \"move_count\": " << lex.hybrid.overall.count << "\n";
@@ -930,6 +931,8 @@ int main(int argc, char* argv[]) {
         json_out << "}\n";
         json_out.close();
         std::cerr << "Summary JSON written to: " << json_path << "\n";
+    } else {
+        std::cerr << "ERROR: Failed to open JSON summary output file: " << json_path << "\n";
     }
 
     return 0;

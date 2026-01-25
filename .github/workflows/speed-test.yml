@@ -42,10 +42,20 @@ jobs:
           TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
           BASELINE_SHA=$(git rev-parse "$BASELINE_REF" 2>/dev/null || echo "")
 
+          # Validate that both refs resolved successfully
+          if [[ -z "$TEST_SHA" ]]; then
+            echo "Error: Failed to resolve test ref '$TEST_REF' to a commit SHA." >&2
+            exit 1
+          fi
+          if [[ -z "$BASELINE_SHA" ]]; then
+            echo "Error: Failed to resolve baseline ref '$BASELINE_REF' to a commit SHA." >&2
+            exit 1
+          fi
+
           echo "test_sha=$TEST_SHA" >> "$GITHUB_OUTPUT"
           echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
 
-          if [[ "$TEST_SHA" == "$BASELINE_SHA" ]] && [[ -n "$TEST_SHA" ]]; then
+          if [[ "$TEST_SHA" == "$BASELINE_SHA" ]]; then
             echo "same_commit=true" >> "$GITHUB_OUTPUT"
             echo "Test and baseline resolve to the same commit: $TEST_SHA"
           else
@@ -212,6 +222,7 @@ jobs:
 
       - name: Generate comparison summary
         run: |
+          # Note: jq and bc are pre-installed on ubuntu-latest runners
           TEST_REF="${{ inputs.test_ref || github.ref }}"
           BASELINE_REF="${{ inputs.baseline_ref }}"
 
@@ -221,14 +232,17 @@ jobs:
             echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|------|----------|--------|" >> $GITHUB_STEP_SUMMARY
 
-            for lex in NWL23 CSW24; do
-              test_hybrid=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .hybrid_mean" benchmark-results/timing_report_summary.json)
-              base_hybrid=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .hybrid_mean" baseline-results/timing_report_summary.json)
+            # Dynamically extract lexicon names from JSON
+            lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
+            for lex in $lexicons; do
+              test_hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' benchmark-results/timing_report_summary.json)
+              base_hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' baseline-results/timing_report_summary.json)
 
-              if [[ "$test_hybrid" != "null" ]] && [[ "$base_hybrid" != "null" ]]; then
+              if [[ "$test_hybrid" != "null" ]] && [[ "$base_hybrid" != "null" ]] && [[ "$base_hybrid" != "0" ]]; then
                 change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
                 if (( $(echo "$change < 0" | bc -l) )); then
-                  change_display="${change}% faster"
+                  # Remove leading minus sign for display
+                  change_display="${change#-}% faster"
                 elif (( $(echo "$change > 0" | bc -l) )); then
                   change_display="+${change}% slower"
                 else
@@ -282,6 +296,7 @@ jobs:
 
       - name: Generate summary
         run: |
+          # Note: jq is pre-installed on ubuntu-latest runners
           TEST_REF="${{ inputs.test_ref || github.ref }}"
 
           echo "## Performance Results" >> $GITHUB_STEP_SUMMARY
@@ -295,11 +310,13 @@ jobs:
             echo "| Lexicon | Hybrid Mean | Shadow Mean | NoShadow Mean | Moves |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|-------------|-------------|---------------|-------|" >> $GITHUB_STEP_SUMMARY
 
-            for lex in NWL23 CSW24; do
-              hybrid=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .hybrid_mean" benchmark-results/timing_report_summary.json)
-              shadow=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .shadow_mean" benchmark-results/timing_report_summary.json)
-              noshadow=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .noshadow_mean" benchmark-results/timing_report_summary.json)
-              moves=$(jq -r ".lexicons[] | select(.name == \"$lex\") | .move_count" benchmark-results/timing_report_summary.json)
+            # Dynamically extract lexicon names from JSON
+            lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
+            for lex in $lexicons; do
+              hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' benchmark-results/timing_report_summary.json)
+              shadow=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .shadow_mean' benchmark-results/timing_report_summary.json)
+              noshadow=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .noshadow_mean' benchmark-results/timing_report_summary.json)
+              moves=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .move_count' benchmark-results/timing_report_summary.json)
 
               if [[ "$hybrid" != "null" ]]; then
                 echo "| **${lex}** | ${hybrid} frames | ${shadow} frames | ${noshadow} frames | ${moves} |" >> $GITHUB_STEP_SUMMARY
