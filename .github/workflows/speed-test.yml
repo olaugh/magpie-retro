@@ -1,6 +1,8 @@
 name: Speed Test Benchmark
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       num_games:
@@ -24,6 +26,11 @@ on:
         default: ''
         type: string
 
+env:
+  # Defaults for when inputs are not available (e.g., pull_request trigger)
+  DEFAULT_NUM_GAMES: 50
+  DEFAULT_BASELINE_REF: main
+
 jobs:
   # First, check if test and baseline refs resolve to the same commit
   check-refs:
@@ -41,7 +48,7 @@ jobs:
         id: check
         run: |
           TEST_REF="${{ inputs.test_ref || github.ref }}"
-          BASELINE_REF="${{ inputs.baseline_ref }}"
+          BASELINE_REF="${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
 
           # Resolve refs to commit SHAs
           TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
@@ -124,7 +131,7 @@ jobs:
           mkdir -p results
 
           bazelisk run //tests/gxtest:scrabble_timing_report -- \
-            -n ${{ inputs.num_games }} \
+            -n ${{ inputs.num_games || env.DEFAULT_NUM_GAMES }} \
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
 
@@ -165,7 +172,7 @@ jobs:
 
       - name: Show baseline configuration
         run: |
-          echo "Baseline ref: ${{ inputs.baseline_ref }}"
+          echo "Baseline ref: ${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
           echo "Commit: $(git rev-parse HEAD)"
           echo "Commit message: $(git log -1 --pretty=%s)"
 
@@ -200,14 +207,14 @@ jobs:
           mkdir -p results
 
           bazelisk run //tests/gxtest:scrabble_timing_report -- \
-            -n ${{ inputs.num_games }} \
+            -n ${{ inputs.num_games || env.DEFAULT_NUM_GAMES }} \
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
 
       - name: Sanitize baseline ref for artifact name
         id: sanitize-baseline-ref
         run: |
-          ref='${{ inputs.baseline_ref }}'
+          ref='${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}'
           safe="${ref//[\/\\:*?\"<>|]/-}"
           echo "value=$safe" >> "$GITHUB_OUTPUT"
           echo "artifact_name=speed-test-baseline-${safe}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
@@ -241,7 +248,7 @@ jobs:
         run: |
           # Note: jq and bc are pre-installed on ubuntu-latest runners
           TEST_REF="${{ inputs.test_ref || github.ref }}"
-          BASELINE_REF="${{ inputs.baseline_ref }}"
+          BASELINE_REF="${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
 
           if [[ -f benchmark-results/timing_report_summary.json ]] && [[ -f baseline-results/timing_report_summary.json ]]; then
             echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
@@ -326,9 +333,10 @@ jobs:
           fi
 
       - name: Post results to PR
-        if: inputs.pr_number != ''
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           # Read the step summary and post it as a PR comment
           if [[ -f "$GITHUB_STEP_SUMMARY" ]]; then
@@ -348,7 +356,7 @@ jobs:
           # Check for existing benchmark comment and update it, or create new one
           EXISTING_COMMENT_ID=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
+            /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
             --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
             | head -1)
 
@@ -360,8 +368,8 @@ jobs:
               -f body="$FULL_COMMENT"
             echo "Updated existing comment #${EXISTING_COMMENT_ID}"
           else
-            gh pr comment ${{ inputs.pr_number }} --body "$FULL_COMMENT"
-            echo "Posted new comment to PR #${{ inputs.pr_number }}"
+            gh pr comment ${PR_NUMBER} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${PR_NUMBER}"
           fi
 
   # Generate summary when test and baseline are the same commit
@@ -418,9 +426,10 @@ jobs:
           fi
 
       - name: Post results to PR
-        if: inputs.pr_number != ''
+        if: github.event_name == 'pull_request' || inputs.pr_number != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           # Read the step summary and post it as a PR comment
           if [[ -f "$GITHUB_STEP_SUMMARY" ]]; then
@@ -440,7 +449,7 @@ jobs:
           # Check for existing benchmark comment and update it, or create new one
           EXISTING_COMMENT_ID=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
+            /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
             --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
             | head -1)
 
@@ -452,6 +461,6 @@ jobs:
               -f body="$FULL_COMMENT"
             echo "Updated existing comment #${EXISTING_COMMENT_ID}"
           else
-            gh pr comment ${{ inputs.pr_number }} --body "$FULL_COMMENT"
-            echo "Posted new comment to PR #${{ inputs.pr_number }}"
+            gh pr comment ${PR_NUMBER} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${PR_NUMBER}"
           fi
