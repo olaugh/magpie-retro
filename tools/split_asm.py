@@ -676,10 +676,77 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
         .content *:focus {{
             outline: none;
         }}
+
+        /* === Mobile Sidebar Toggle === */
+        .sidebar-toggle {{
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 8px;
+            margin-right: 8px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }}
+        .sidebar-toggle:hover {{
+            background: var(--bg-highlight);
+            color: var(--text-primary);
+        }}
+        .sidebar-toggle svg {{
+            display: block;
+            width: 20px;
+            height: 20px;
+        }}
+
+        /* Overlay for mobile when sidebar is open */
+        .sidebar-overlay {{
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+        }}
+
+        /* === Mobile Responsive === */
+        @media (max-width: 768px) {{
+            .sidebar {{
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 100;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+            }}
+            .sidebar.open {{
+                transform: translateX(0);
+            }}
+            .sidebar-overlay.open {{
+                display: block;
+            }}
+            .sidebar-toggle {{
+                display: block;
+            }}
+            .breadcrumb-item:not(.current) {{
+                display: none;
+            }}
+            .breadcrumb-sep {{
+                display: none;
+            }}
+            .segmented-control button {{
+                padding: 6px 10px;
+                font-size: 11px;
+            }}
+            .toolbar-checkbox {{
+                font-size: 11px;
+            }}
+        }}
     </style>
 </head>
 <body>
-    <nav class="sidebar">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">Files</div>
         <div class="search">
             <input type="text" id="search" placeholder="Filter..." oninput="filterFiles()">
@@ -690,6 +757,11 @@ def generate_html(filename: str, functions: list[Function], all_files: list[str]
     </nav>
     <div class="main">
         <div class="toolbar">
+            <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle file list">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12h18M3 6h18M3 18h18"/>
+                </svg>
+            </button>
             <div class="breadcrumb">
                 <span class="breadcrumb-item">{html.escape(binary_name)}</span>
                 <span class="breadcrumb-sep">&#9656;</span>
@@ -954,6 +1026,11 @@ function filterFiles() {{
     }});
 }}
 
+function toggleSidebar() {{
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-overlay').classList.toggle('open');
+}}
+
 // Initial render
 render();
     </script>
@@ -1138,10 +1215,82 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
             font-size: 0.8rem;
             border: 1px solid var(--border-subtle);
         }}
+
+        /* === Mobile Header === */
+        .mobile-header {{
+            display: none;
+            background: var(--bg-surface);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-subtle);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }}
+        .sidebar-toggle {{
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }}
+        .sidebar-toggle:hover {{
+            background: var(--bg-highlight);
+            color: var(--text-primary);
+        }}
+        .sidebar-toggle svg {{
+            display: block;
+            width: 20px;
+            height: 20px;
+        }}
+
+        /* Overlay for mobile when sidebar is open */
+        .sidebar-overlay {{
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+        }}
+
+        /* === Mobile Responsive === */
+        @media (max-width: 768px) {{
+            .sidebar {{
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 100;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+            }}
+            .sidebar.open {{
+                transform: translateX(0);
+            }}
+            .sidebar-overlay.open {{
+                display: block;
+            }}
+            .mobile-header {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }}
+            .content {{
+                padding: 24px 16px;
+            }}
+            .header h1 {{
+                font-size: 1.25rem;
+            }}
+            .stats {{
+                flex-direction: column;
+            }}
+        }}
     </style>
 </head>
 <body>
-    <nav class="sidebar">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">Files</div>
         <div class="search">
             <input type="text" placeholder="Filter..." oninput="filterFiles(this.value)">
@@ -1149,6 +1298,14 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
         <div id="file-list">{files_html}</div>
     </nav>
     <div class="content">
+        <div class="mobile-header">
+            <button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle file list">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12h18M3 6h18M3 18h18"/>
+                </svg>
+            </button>
+            <span style="font-weight: 500; color: var(--text-primary);">Disassembly Explorer</span>
+        </div>
         <div class="header">
             <h1>Disassembly Explorer</h1>
             <p class="subtitle">{html.escape(binary_name)}</p>
@@ -1172,6 +1329,11 @@ def generate_index_html(all_files: list[str], binary_name: str) -> str:
             document.querySelectorAll('#file-list a').forEach(link => {{
                 link.style.display = link.textContent.toLowerCase().includes(query) ? 'block' : 'none';
             }});
+        }}
+
+        function toggleSidebar() {{
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebar-overlay').classList.toggle('open');
         }}
     </script>
 </body>
