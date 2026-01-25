@@ -1,0 +1,182 @@
+name: Speed Test Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      num_games:
+        description: 'Number of games to run per variant'
+        required: false
+        default: 50
+        type: number
+      test_ref:
+        description: 'Git ref to test (branch, tag, or commit SHA). Leave empty for current branch.'
+        required: false
+        default: ''
+        type: string
+      baseline_ref:
+        description: 'Baseline ref to compare against (optional)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.test_ref || github.ref }}
+          submodules: recursive
+          fetch-depth: 0  # Full history for checking out any ref
+
+      - name: Show test configuration
+        run: |
+          echo "Testing ref: ${{ inputs.test_ref || github.ref }}"
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Commit message: $(git log -1 --pretty=%s)"
+
+      # Install Homebrew and m68k-elf toolchain
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+
+      - name: Install m68k-elf toolchain via Homebrew
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap rosco-m68k/toolchain
+          brew install rosco-m68k/toolchain/binutils-cross-m68k
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@13
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Build timing ROMs
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make timing-builds
+
+      - name: Run speed benchmark
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          mkdir -p results
+
+          # Run timing report and capture output
+          bazelisk run //tests/gxtest:scrabble_timing_report -- \
+            -n ${{ inputs.num_games }} \
+            -o ${{ github.workspace }}/results/timing_report.html \
+            2>&1 | tee results/benchmark_output.txt
+
+      - name: Generate summary
+        run: |
+          TEST_REF="${{ inputs.test_ref || github.ref }}"
+          COMMIT_SHA=$(git rev-parse HEAD)
+          # Sanitize commit message: escape pipes and remove newlines for table safety
+          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
+
+          echo "## Speed Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** \`${TEST_REF}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Games:** ${{ inputs.num_games }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Extract key metrics from output
+          if grep -q "frames" results/benchmark_output.txt; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "(NWL23|CSW24|frames|Average|Total)" results/benchmark_output.txt | head -30 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: speed-test-${{ inputs.test_ref || github.ref_name }}-${{ github.run_number }}
+          path: results/
+          retention-days: 30
+
+  # Optional baseline comparison job
+  baseline:
+    runs-on: ubuntu-latest
+    if: inputs.baseline_ref != ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Show baseline configuration
+        run: |
+          echo "Baseline ref: ${{ inputs.baseline_ref }}"
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Commit message: $(git log -1 --pretty=%s)"
+
+      - name: Install Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+          echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+
+      - name: Install m68k-elf toolchain via Homebrew
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap rosco-m68k/toolchain
+          brew install rosco-m68k/toolchain/binutils-cross-m68k
+          brew install rosco-m68k/toolchain/gcc-cross-m68k@13
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-baseline
+          repository-cache: true
+
+      - name: Build timing ROMs (baseline)
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          make timing-builds
+
+      - name: Run baseline benchmark
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          mkdir -p results
+
+          bazelisk run //tests/gxtest:scrabble_timing_report -- \
+            -n ${{ inputs.num_games }} \
+            -o ${{ github.workspace }}/results/timing_report.html \
+            2>&1 | tee results/benchmark_output.txt
+
+      - name: Generate baseline summary
+        run: |
+          COMMIT_SHA=$(git rev-parse HEAD)
+          # Sanitize commit message: escape pipes and remove newlines for safety
+          COMMIT_MSG=$(git log -1 --pretty=%s | tr '|' '/' | tr '\n' ' ' | head -c 80)
+
+          echo "## Baseline Results (${{ inputs.baseline_ref }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** \`${{ inputs.baseline_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** \`${COMMIT_SHA:0:7}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Message:** ${COMMIT_MSG}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if grep -q "frames" results/benchmark_output.txt; then
+            echo "### Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "(NWL23|CSW24|frames|Average|Total)" results/benchmark_output.txt | head -30 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload baseline results
+        uses: actions/upload-artifact@v4
+        with:
+          name: speed-test-baseline-${{ inputs.baseline_ref }}-${{ github.run_number }}
+          path: results/
+          retention-days: 30
