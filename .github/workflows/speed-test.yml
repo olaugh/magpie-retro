@@ -18,6 +18,11 @@ on:
         required: false
         default: 'main'
         type: string
+      pr_number:
+        description: 'PR number to post results as a comment (optional)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   # First, check if test and baseline refs resolve to the same commit
@@ -320,6 +325,45 @@ jobs:
             echo "Results files not found. Download the artifacts to view the reports." >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Post results to PR
+        if: inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Read the step summary and post it as a PR comment
+          if [[ -f "$GITHUB_STEP_SUMMARY" ]]; then
+            COMMENT_BODY=$(cat "$GITHUB_STEP_SUMMARY")
+          else
+            COMMENT_BODY="Benchmark comparison complete. View the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi
+
+          # Add a header and link to the full workflow run
+          FULL_COMMENT="### Speed Test Benchmark Results
+
+          $COMMENT_BODY
+
+          ---
+          _[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+
+          # Check for existing benchmark comment and update it, or create new one
+          EXISTING_COMMENT_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
+            --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
+            | head -1)
+
+          if [[ -n "$EXISTING_COMMENT_ID" ]]; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT_ID} \
+              -f body="$FULL_COMMENT"
+            echo "Updated existing comment #${EXISTING_COMMENT_ID}"
+          else
+            gh pr comment ${{ inputs.pr_number }} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${{ inputs.pr_number }}"
+          fi
+
   # Generate summary when test and baseline are the same commit
   summary:
     runs-on: ubuntu-latest
@@ -371,4 +415,43 @@ jobs:
             echo "</details>" >> $GITHUB_STEP_SUMMARY
           else
             echo "Summary JSON file not found. Download the artifact to view the full HTML report." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Post results to PR
+        if: inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Read the step summary and post it as a PR comment
+          if [[ -f "$GITHUB_STEP_SUMMARY" ]]; then
+            COMMENT_BODY=$(cat "$GITHUB_STEP_SUMMARY")
+          else
+            COMMENT_BODY="Benchmark complete. View the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi
+
+          # Add a header and link to the full workflow run
+          FULL_COMMENT="### Speed Test Benchmark Results
+
+          $COMMENT_BODY
+
+          ---
+          _[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+
+          # Check for existing benchmark comment and update it, or create new one
+          EXISTING_COMMENT_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${{ inputs.pr_number }}/comments \
+            --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
+            | head -1)
+
+          if [[ -n "$EXISTING_COMMENT_ID" ]]; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT_ID} \
+              -f body="$FULL_COMMENT"
+            echo "Updated existing comment #${EXISTING_COMMENT_ID}"
+          else
+            gh pr comment ${{ inputs.pr_number }} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${{ inputs.pr_number }}"
           fi
