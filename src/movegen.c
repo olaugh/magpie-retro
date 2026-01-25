@@ -1608,6 +1608,9 @@ static inline void go_on(MoveGenState *gen, int col, MachineLetter letter,
 static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                           int leftstrip, int rightstrip) {
 
+    /* Cache klv pointer in local for inner loop - avoids repeated struct loads */
+    const KLV *klv = gen->klv;
+
     MachineLetter current_letter = gen->row_letters[col];
 
     /* Compute valid letters for this position */
@@ -1661,7 +1664,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                         gen->tiles_played++;
 
                         /* Update leave map */
-                        if (gen->klv != NULL) {
+                        if (klv != NULL) {
                             leave_map_take_letter(&gen->leave_map, tile,
                                                   gen->rack.counts[tile]);
                         }
@@ -1670,7 +1673,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                               leftstrip, rightstrip);
 
                         /* Restore leave map */
-                        if (gen->klv != NULL) {
+                        if (klv != NULL) {
                             leave_map_add_letter(&gen->leave_map, tile,
                                                  gen->rack.counts[tile]);
                         }
@@ -1687,7 +1690,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                         gen->tiles_played++;
 
                         /* Update leave map */
-                        if (gen->klv != NULL) {
+                        if (klv != NULL) {
                             leave_map_take_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
                                                   gen->rack.counts[BLANK_MACHINE_LETTER]);
                         }
@@ -1696,7 +1699,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
                               leftstrip, rightstrip);
 
                         /* Restore leave map */
-                        if (gen->klv != NULL) {
+                        if (klv != NULL) {
                             leave_map_add_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
                                                  gen->rack.counts[BLANK_MACHINE_LETTER]);
                         }
