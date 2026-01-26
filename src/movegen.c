@@ -1671,8 +1671,7 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
             MachineLetter tile = KWG_TILE(node);
 
             if (tile != 0) {  /* Skip separator */
-                /* Check cross-set first (cheap bit test), then rack if in cross-set.
-                 * This avoids rack.counts lookup for tiles not in cross_set. */
+                /* Check cross-set first to avoid rack lookup for tiles not in cross_set */
                 if (in_cross_set(cross_set, tile)) {
                     int has_tile = gen->rack.counts[tile] > 0;
 
@@ -2023,7 +2022,7 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
     /* Copy rack (we modify it during generation) */
     memcpy(&gen.rack, rack, sizeof(Rack));
 
-    /* Build rack_bits bitmap for fast tile-in-rack checks */
+    /* Initialize rack_bits bitmap (used by shadow algorithm and other code paths) */
     gen.rack_bits = build_rack_cross_set(&gen.rack);
 
     /* Initialize leave map if KLV is available */
@@ -2057,9 +2056,9 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
     timing_shadow_us += get_time_us() - t_shadow_start;
 #endif
 
-    /* Restore rack after shadow (gen_shadow modifies it) */
+    /* Restore rack after shadow (gen_shadow modifies gen.rack.counts) */
     memcpy(&gen.rack, rack, sizeof(Rack));
-    /* Restore rack_bits after shadow (shadow may modify it during exploration) */
+    /* Rebuild rack_bits because it is derived from gen.rack, which was restored */
     gen.rack_bits = build_rack_cross_set(&gen.rack);
 
     /*
