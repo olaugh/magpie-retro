@@ -388,7 +388,9 @@ test-native-noshadow: nwl23-noshadow build/native-noshadow/test_native.o $(NATIV
 	./build/native-noshadow/test_native 8
 
 # Optimized native test build (for timing)
-NATIVE_OPT_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=1
+# -fno-builtin prevents the compiler from replacing our custom memset/memcpy
+# with recursive calls to themselves, which causes stack overflow at -O3
+NATIVE_OPT_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=1 -fno-builtin
 
 NATIVE_OPT_OBJECTS = $(patsubst src/%.c,build/native-opt/%.o,$(NATIVE_SOURCES))
 
@@ -415,7 +417,7 @@ test-native-opt: nwl23-shadow build/native-opt/test_native.o $(NATIVE_OPT_OBJECT
 	./build/native-opt/test_native 100
 
 # Optimized native test WITHOUT shadow (for timing comparison)
-NATIVE_OPT_NOSHADOW_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=0
+NATIVE_OPT_NOSHADOW_CFLAGS = -O3 -DNDEBUG -DUSE_SHADOW=0 -fno-builtin
 NATIVE_OPT_NOSHADOW_OBJECTS = $(patsubst src/%.c,build/native-opt-noshadow/%.o,$(NATIVE_SOURCES))
 
 build/native-opt-noshadow:
