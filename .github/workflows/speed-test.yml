@@ -279,7 +279,7 @@ jobs:
               base_hybrid=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .hybrid_mean' baseline-results/timing_report_summary.json)
 
               if [[ "$test_hybrid" != "null" ]] && [[ "$base_hybrid" != "null" ]] && [[ "$base_hybrid" != "0" ]]; then
-                change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
+                change=$(echo "scale=4; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
                 if (( $(echo "$change < 0" | bc -l) )); then
                   # Remove leading minus sign for display
                   change_display="${change#-}% faster"
@@ -333,7 +333,7 @@ jobs:
                 echo "|--------|------|----------|--------|"
               } | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
 
-              change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
+              change=$(echo "scale=4; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
               if (( $(echo "$change < 0" | bc -l) )); then
                 change_display="${change#-}% faster"
               elif (( $(echo "$change > 0" | bc -l) )); then

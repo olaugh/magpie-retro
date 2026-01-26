@@ -113,6 +113,22 @@ extern void *memset(void *s, int c, unsigned long n);
 extern void *memcpy(void *dest, const void *src, unsigned long n);
 
 /*
+ * BIT_MASK: Lookup table for single-bit masks to avoid variable shifts.
+ * On 68000, a variable shift like (1U << n) costs 2 cycles per bit shifted,
+ * up to 52 cycles for n=26. A table lookup costs only ~8 cycles.
+ */
+static const uint32_t BIT_MASK[32] = {
+    0x00000001, 0x00000002, 0x00000004, 0x00000008,
+    0x00000010, 0x00000020, 0x00000040, 0x00000080,
+    0x00000100, 0x00000200, 0x00000400, 0x00000800,
+    0x00001000, 0x00002000, 0x00004000, 0x00008000,
+    0x00010000, 0x00020000, 0x00040000, 0x00080000,
+    0x00100000, 0x00200000, 0x00400000, 0x00800000,
+    0x01000000, 0x02000000, 0x04000000, 0x08000000,
+    0x10000000, 0x20000000, 0x40000000, 0x80000000
+};
+
+/*
  * COPY_14_BYTES: Fast copy for 14-byte arrays (RACK_SIZE * sizeof(int16_t)).
  * On 68000, uses explicit long-word copies to avoid memcpy call overhead.
  * On other platforms, uses memcpy which compilers optimize well.
@@ -409,7 +425,7 @@ static inline int is_anchor(const MoveGenState *gen, int col) {
 
 /* Check if letter is in cross-set */
 static inline int in_cross_set(CrossSet cs, MachineLetter ml) {
-    return (cs & (1U << UNBLANKED(ml))) != 0;
+    return (cs & BIT_MASK[UNBLANKED(ml)]) != 0;
 }
 
 /*
@@ -462,7 +478,7 @@ static uint32_t build_rack_cross_set(const Rack *rack) {
     uint32_t bits = 0;
     for (MachineLetter ml = 0; ml < ALPHABET_SIZE; ml++) {
         if (rack->counts[ml] > 0) {
-            bits |= (1U << ml);
+            bits |= BIT_MASK[ml];
         }
     }
     return bits;
@@ -586,7 +602,7 @@ static inline int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
         gen->rack.counts[ml]--;
         gen->rack.total--;
         if (gen->rack.counts[ml] == 0) {
-            gen->rack_bits &= ~(1U << ml);
+            gen->rack_bits &= ~BIT_MASK[ml];
         }
         score = tile_scores[ml];
     } else if (gen->rack.counts[BLANK_MACHINE_LETTER] > 0) {
@@ -594,7 +610,7 @@ static inline int try_restrict_tile(MoveGenState *gen, uint32_t possible_tiles,
         gen->rack.counts[BLANK_MACHINE_LETTER]--;
         gen->rack.total--;
         if (gen->rack.counts[BLANK_MACHINE_LETTER] == 0) {
-            gen->rack_bits &= ~(1U << BLANK_MACHINE_LETTER);
+            gen->rack_bits &= ~BIT_MASK[BLANK_MACHINE_LETTER];
         }
         score = 0;  /* Blank scores 0 */
     } else {
@@ -1645,6 +1661,11 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
         }
     } else if (gen->rack.total > 0) {
         /* Empty square - try rack tiles */
+
+        /* Hoist has_blank outside the loop - it doesn't change during iteration.
+         * This saves one memory read per arc in the GADDAG traversal. */
+        int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
+
         for (uint32_t i = node_index; ; i++) {
             uint32_t node = kwg_get_node(gen->kwg, i);
             MachineLetter tile = KWG_TILE(node);
@@ -1652,7 +1673,6 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
             if (tile != 0) {  /* Skip separator */
                 /* Check if tile is in rack and cross-set */
                 int has_tile = gen->rack.counts[tile] > 0;
-                int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
 
                 if ((has_tile || has_blank) && in_cross_set(cross_set, tile)) {
                     uint32_t next_index = KWG_ARC_INDEX(node);
@@ -1883,7 +1903,7 @@ static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
 
     /* Use bitmask to enumerate all subsets of the rack */
     uint8_t rack_size = gen->rack.total;
-    uint16_t max_mask = (1 << rack_size) - 1;
+    uint16_t max_mask = BIT_MASK[rack_size] - 1;
 
     for (uint16_t mask = 1; mask <= max_mask; mask++) {
         /* mask represents tiles to EXCHANGE (remove from rack) */
@@ -1897,7 +1917,7 @@ static void generate_exchange_moves(MoveGenState *gen, const Bag *bag,
         uint8_t bit_pos = 0;
         for (MachineLetter ml = 0; ml < ALPHABET_SIZE && bit_pos < rack_size; ml++) {
             for (uint8_t c = 0; c < gen->rack.counts[ml]; c++) {
-                if (mask & (1 << bit_pos)) {
+                if (mask & BIT_MASK[bit_pos]) {
                     /* This tile is exchanged */
                     temp_rack.counts[ml]--;
                     temp_rack.total--;
