@@ -336,7 +336,7 @@ NATIVE_CC = clang
 NATIVE_CFLAGS = -g -O0 -Wall -Wextra -fsanitize=address,undefined -DUSE_SHADOW=1
 NATIVE_LDFLAGS = -fsanitize=address,undefined
 
-NATIVE_SOURCES = src/board.c src/game.c src/movegen.c src/klv.c src/kwg.c src/libc.c
+NATIVE_SOURCES = src/bit_tables.c src/board.c src/game.c src/movegen.c src/klv.c src/kwg.c src/libc.c
 NATIVE_OBJECTS = $(patsubst src/%.c,build/native/%.o,$(NATIVE_SOURCES))
 
 build/native:
