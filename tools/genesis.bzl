@@ -134,6 +134,7 @@ def genesis_rom(
         "//inc:klv.h",
         "//inc:anchor.h",
         "//inc:equity.h",
+        "//inc:bit_tables.h",
     ]
 
     # Generate data files
@@ -144,6 +145,7 @@ def genesis_rom(
 
     # C source files (alphabetical order to match Make build)
     c_sources = [
+        "//src:bit_tables.c",
         "//src:board.c",
         "//src:font_4x6.c",
         "//src:font_5x7.c",
