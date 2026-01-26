@@ -700,26 +700,21 @@ static void playthrough_shadow_play_left(MoveGenState *gen, int is_unique);
  * Shadow play rightward from anchor
  */
 static void shadow_play_right(MoveGenState *gen, int is_unique) {
-    /* Save state to restore after shadow right */
+    /* Save scalar state (always - these are cheap) */
     Equity orig_main = gen->shadow_mainword_restricted_score;
     Equity orig_perp = gen->shadow_perpendicular_additional_score;
     uint8_t orig_wordmul = gen->shadow_word_multiplier;
-
-    /* Save rack state using struct assignment (avoids memcpy call overhead).
-     * Use struct-level copy to avoid stack allocation. */
-    gen->rack_shadow_right_copy = gen->rack;
-    uint32_t orig_rack_bits = gen->rack_bits;
-
-    /* Save descending tile scores using struct-level copy */
-    COPY_14_BYTES(gen->descending_tile_scores_copy, gen->descending_tile_scores);
-
-    /* Save unrestricted multiplier state using struct-level copies */
-    uint8_t orig_num_unrestricted = gen->num_unrestricted_multipliers;
-    COPY_14_BYTES(gen->desc_xw_muls_copy, gen->descending_cross_word_multipliers);
-    COPY_14_BYTES(gen->desc_eff_letter_muls_copy, gen->descending_effective_letter_multipliers);
-
     int orig_right_col = gen->shadow_right_col;
     int orig_tiles_played = gen->tiles_played;
+    uint8_t orig_num_unrestricted = gen->num_unrestricted_multipliers;
+
+    /* Save rack state upfront (needed if try_restrict_tile succeeds) */
+    gen->rack_shadow_right_copy = gen->rack;
+    uint32_t orig_rack_bits = gen->rack_bits;
+    COPY_14_BYTES(gen->descending_tile_scores_copy, gen->descending_tile_scores);
+
+    /* Multipliers saved lazily - only when we enter the else branch */
+    int saved_multipliers = 0;
     int restricted_any = 0;
     int changed_multipliers = 0;
 
@@ -788,6 +783,12 @@ static void shadow_play_right(MoveGenState *gen, int is_unique) {
                               gen->shadow_right_col)) {
             restricted_any = 1;
         } else {
+            /* Lazy save: save multipliers before first modification */
+            if (!saved_multipliers) {
+                COPY_14_BYTES(gen->desc_xw_muls_copy, gen->descending_cross_word_multipliers);
+                COPY_14_BYTES(gen->desc_eff_letter_muls_copy, gen->descending_effective_letter_multipliers);
+                saved_multipliers = 1;
+            }
             insert_unrestricted_multipliers(gen, gen->shadow_right_col);
             changed_multipliers = 1;
         }
