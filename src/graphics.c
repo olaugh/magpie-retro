@@ -3,6 +3,7 @@
  */
 
 #include "scrabble.h"
+#include "bit_tables.h"
 #include <stdint.h>
 
 /* VDP ports */
@@ -856,7 +857,7 @@ void draw_history(const HistoryEntry *hist, int count) {
                     word_ended = 1;
                 } else {
                     /* Use grey (palette 1) for blanks, white (palette 0) for normal */
-                    int pal = (h->blanks & (1 << j)) ? 1 : 0;
+                    int pal = (h->blanks & BIT_MASK[j]) ? 1 : 0;
                     draw_char(HISTORY_COL + 1 + j, y, c, pal);
                 }
             }

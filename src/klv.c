@@ -6,6 +6,7 @@
 
 #include "klv.h"
 #include "scrabble.h"
+#include "bit_tables.h"
 
 /* From libc.c */
 extern void *memset(void *s, int c, unsigned long n);
@@ -287,7 +288,7 @@ void leave_map_init(LeaveMap *lm, const KLV *klv, const Rack *rack) {
             lm->letter_base_index[ml] = current_base;
             for (uint8_t j = 0; j < count; j++) {
                 uint8_t bit_index = current_base + count - j - 1;
-                lm->reversed_bit_map[current_base + j] = 1 << bit_index;
+                lm->reversed_bit_map[current_base + j] = BIT_MASK[bit_index];
             }
             current_base += count;
         } else {
@@ -296,7 +297,7 @@ void leave_map_init(LeaveMap *lm, const KLV *klv, const Rack *rack) {
     }
 
     lm->rack_size = rack->total;
-    lm->current_index = (1 << rack->total) - 1;  /* All bits set */
+    lm->current_index = BITS_BELOW_MASK[rack->total];  /* All bits set */
 
     /* Initialize best_leaves to minimum value */
     for (int i = 0; i <= RACK_SIZE; i++) {

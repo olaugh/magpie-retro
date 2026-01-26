@@ -4,6 +4,7 @@
 
 #include "scrabble.h"
 #include "kwg.h"
+#include "bit_tables.h"
 
 /*
  * Check if a sequence of letters forms a valid word using DAWG
@@ -185,7 +186,7 @@ CrossSet compute_cross_set(const uint32_t *kwg,
             if (suffix_len == 0) {
                 /* No suffix - just check if this letter accepts */
                 if (KWG_ACCEPTS(node)) {
-                    result |= (1U << letter);
+                    result |= BIT_MASK[letter];
                 }
             } else if (next != 0) {
                 /* Follow suffix from here */
@@ -201,7 +202,7 @@ CrossSet compute_cross_set(const uint32_t *kwg,
                             if (j == suffix_len - 1) {
                                 /* Last suffix letter - check accepts */
                                 if (KWG_ACCEPTS(n)) {
-                                    result |= (1U << letter);
+                                    result |= BIT_MASK[letter];
                                 }
                             } else {
                                 suf_node = KWG_ARC_INDEX(n);

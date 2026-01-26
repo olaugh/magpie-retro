@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 #include "scrabble.h"
+#include "bit_tables.h"
 
 /* KWG node bit field definitions */
 #define KWG_TILE_SHIFT     24
@@ -125,7 +126,7 @@ static inline uint32_t kwg_get_letter_sets(const uint32_t *kwg, uint32_t node_in
         MachineLetter tile = KWG_TILE(node);
 
         if (tile != 0) {  /* Skip separator */
-            uint32_t bit = 1U << tile;
+            uint32_t bit = BIT_MASK[tile];
             extension_set |= bit;
             if (KWG_ACCEPTS(node)) {
                 letter_set |= bit;

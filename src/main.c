@@ -5,6 +5,7 @@
 #include "scrabble.h"
 #include "kwg.h"
 #include "klv.h"
+#include "bit_tables.h"
 
 #ifndef NULL
 #define NULL ((void *)0)
@@ -227,7 +228,7 @@ static void add_to_history(const Move *m, int player, const Board *board, uint16
             h->word[i] = 'A' + (letter - 1);
             /* Track blanks in bitmask */
             if (IS_BLANKED(ml)) {
-                h->blanks |= (1 << i);
+                h->blanks |= BIT_MASK[i];
             }
         } else {
             h->word[i] = '?';
