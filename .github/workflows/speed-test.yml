@@ -376,7 +376,7 @@ jobs:
               -f body="$FULL_COMMENT"
             echo "Updated existing comment #${EXISTING_COMMENT_ID}"
           else
-            gh pr comment ${PR_NUMBER} --body "$FULL_COMMENT"
+            gh pr comment ${PR_NUMBER} --repo ${{ github.repository }} --body "$FULL_COMMENT"
             echo "Posted new comment to PR #${PR_NUMBER}"
           fi
 
@@ -470,6 +470,6 @@ jobs:
               -f body="$FULL_COMMENT"
             echo "Updated existing comment #${EXISTING_COMMENT_ID}"
           else
-            gh pr comment ${PR_NUMBER} --body "$FULL_COMMENT"
+            gh pr comment ${PR_NUMBER} --repo ${{ github.repository }} --body "$FULL_COMMENT"
             echo "Posted new comment to PR #${PR_NUMBER}"
           fi
