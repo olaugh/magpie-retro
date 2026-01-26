@@ -1645,16 +1645,27 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
         }
     } else if (gen->rack.total > 0) {
         /* Empty square - try rack tiles */
+
+        /* Hoist has_blank outside the loop - it doesn't change during iteration */
+        int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
+
+        /* Precompute playable tiles: if we have a blank, any cross_set tile
+         * is potentially playable; otherwise only tiles in both cross_set
+         * AND our rack. This avoids repeated cross_set & rack_bits in loop. */
+        uint32_t playable_tiles = has_blank ? cross_set
+                                            : (cross_set & gen->rack_bits);
+
         for (uint32_t i = node_index; ; i++) {
             uint32_t node = kwg_get_node(gen->kwg, i);
             MachineLetter tile = KWG_TILE(node);
 
             if (tile != 0) {  /* Skip separator */
-                /* Check if tile is in rack and cross-set */
-                int has_tile = gen->rack.counts[tile] > 0;
-                int has_blank = gen->rack.counts[BLANK_MACHINE_LETTER] > 0;
+                /* Quick bitmask check: is this tile potentially playable? */
+                if (in_cross_set(playable_tiles, tile)) {
+                    /* Check if we have the actual tile (may have been used
+                     * in a higher stack frame, so rack_bits could be stale) */
+                    int has_tile = gen->rack.counts[tile] > 0;
 
-                if ((has_tile || has_blank) && in_cross_set(cross_set, tile)) {
                     uint32_t next_index = KWG_ARC_INDEX(node);
                     int accepts = KWG_ACCEPTS(node);
 
@@ -2086,6 +2097,10 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
          * Note: leave_map doesn't need reinitialization - it's based on the original
          * rack and we're restoring the rack here. */
         memcpy(&gen.rack, rack, sizeof(Rack));
+
+        /* Rebuild rack_bits to match restored rack.
+         * This is needed because recursive_gen uses rack_bits for fast tile checks. */
+        gen.rack_bits = build_rack_cross_set(&gen.rack);
 
         /* Reset leave_map's current_index to match restored rack (all tiles present = index 0) */
         gen.leave_map.current_index = 0;
