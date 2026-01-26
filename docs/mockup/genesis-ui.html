@@ -75,9 +75,12 @@
             padding: 0;
             cursor: pointer;
         }
-        .color-row span {
+        .color-row label {
             font-size: 12px;
             color: #888;
+            font-weight: normal;
+            text-transform: none;
+            margin-bottom: 0;
         }
         .range-value {
             text-align: center;
@@ -106,19 +109,19 @@
         </div>
         <div class="controls">
             <div class="control-group">
-                <label>Canvas Scale</label>
+                <label for="scale">Canvas Scale</label>
                 <input type="range" id="scale" min="1" max="4" value="3">
-                <div class="range-value"><span id="scaleValue">3</span>x (960x672)</div>
+                <div class="range-value"><span id="scaleValue">3</span>x (<span id="scaleDims">960x672</span>)</div>
             </div>
 
             <div class="control-group">
-                <label>Board Square Size</label>
+                <label for="squareSize">Board Square Size</label>
                 <input type="range" id="squareSize" min="8" max="16" value="12">
                 <div class="range-value"><span id="squareSizeValue">12</span>px</div>
             </div>
 
             <div class="control-group">
-                <label>Tile Font</label>
+                <label for="tileFont">Tile Font</label>
                 <select id="tileFont">
                     <option value="five_pixel">Five Pixel (5x5)</option>
                     <option value="tom_thumb">Tom Thumb (3x5)</option>
@@ -130,7 +133,7 @@
             </div>
 
             <div class="control-group">
-                <label>History/UI Font</label>
+                <label for="uiFont">History/UI Font</label>
                 <select id="uiFont">
                     <option value="ui_8x8">UI 8x8 (IBM VGA)</option>
                     <option value="five_pixel">Five Pixel (5x5)</option>
@@ -142,7 +145,7 @@
             </div>
 
             <div class="control-group">
-                <label>Dither Pattern</label>
+                <label for="ditherPattern">Dither Pattern</label>
                 <select id="ditherPattern">
                     <option value="none">None (Solid)</option>
                     <option value="checker">Checkerboard</option>
@@ -157,39 +160,39 @@
                 <label>Colors</label>
                 <div class="color-row">
                     <input type="color" id="colorBg" value="#000000">
-                    <span>Background</span>
+                    <label for="colorBg">Background</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorEmpty" value="#444444">
-                    <span>Empty Square</span>
+                    <label for="colorEmpty">Empty Square</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorGrid" value="#222222">
-                    <span>Grid Lines</span>
+                    <label for="colorGrid">Grid Lines</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorTile" value="#eec888">
-                    <span>Letter Tile</span>
+                    <label for="colorTile">Letter Tile</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorBlank" value="#aa44aa">
-                    <span>Blank Tile</span>
+                    <label for="colorBlank">Blank Tile</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorTWS" value="#ee4422">
-                    <span>Triple Word</span>
+                    <label for="colorTWS">Triple Word</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorDWS" value="#aa6644">
-                    <span>Double Word</span>
+                    <label for="colorDWS">Double Word</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorTLS" value="#2244aa">
-                    <span>Triple Letter</span>
+                    <label for="colorTLS">Triple Letter</label>
                 </div>
                 <div class="color-row">
                     <input type="color" id="colorDLS" value="#6688cc">
-                    <span>Double Letter</span>
+                    <label for="colorDLS">Double Letter</label>
                 </div>
             </div>
 
@@ -197,17 +200,17 @@
                 <label>Board Position</label>
                 <div style="display:flex;gap:10px;">
                     <div style="flex:1;">
-                        <label style="font-size:11px;">Left (px)</label>
+                        <label for="boardLeft" style="font-size:11px;">Left (px)</label>
                         <input type="number" id="boardLeft" value="16" min="0" max="100">
                     </div>
                     <div style="flex:1;">
-                        <label style="font-size:11px;">Top (px)</label>
+                        <label for="boardTop" style="font-size:11px;">Top (px)</label>
                         <input type="number" id="boardTop" value="32" min="0" max="100">
                     </div>
                 </div>
             </div>
 
-            <button onclick="render()">Refresh</button>
+            <button id="refreshBtn">Refresh</button>
         </div>
     </div>
 
@@ -401,9 +404,9 @@ function drawGlyph(font, charCode, x, y, fgColor, bgColor, scale = 1) {
     const [fr, fg, fb] = fgColor;
     const [br, bg, bb] = bgColor || [0,0,0];
 
-    for (let row = 0; row < 8; row++) {
+    for (let row = 0; row < fontData.height; row++) {
         const bits = glyph[row];
-        for (let col = 0; col < 8; col++) {
+        for (let col = 0; col < fontData.width; col++) {
             const on = bits & (0x80 >> col);
             for (let sy = 0; sy < scale; sy++) {
                 for (let sx = 0; sx < scale; sx++) {
@@ -541,19 +544,21 @@ function render() {
     // Draw rack
     const rackY = boardTop + 15 * squareSize + 6;
     drawString(uiFont, 'RACK:', 2, rackY, [255,255,255], null);
-    const rackTiles = ['A','E','I','O','N','R','T'];
-    const fontData = FONTS[tileFont];
-    const tileW = fontData ? fontData.width + 2 : 10;
+    const rackTiles = ['A','E','I','O','?','R','T']; // ? = blank tile
+    const rackFontData = FONTS[tileFont];
     for (let i = 0; i < rackTiles.length; i++) {
         const rx = 48 + i * (squareSize + 1);
+        const isBlank = rackTiles[i] === '?';
+        const tileColor = isBlank ? colorBlank : colorTile;
         if (dither) {
-            fillRectDither(rx, rackY - 1, squareSize-1, squareSize-1, colorTile, colorBg, dither);
+            fillRectDither(rx, rackY - 1, squareSize-1, squareSize-1, tileColor, colorBg, dither);
         } else {
-            fillRect(rx, rackY - 1, squareSize-1, squareSize-1, ...colorTile);
+            fillRect(rx, rackY - 1, squareSize-1, squareSize-1, ...tileColor);
         }
-        const lx = rx + Math.floor((squareSize - (fontData ? fontData.width : 8)) / 2);
-        const ly = rackY - 1 + Math.floor((squareSize - (fontData ? fontData.height : 8)) / 2);
-        drawGlyph(tileFont, rackTiles[i].charCodeAt(0), lx, ly, [0,0,0], null);
+        const lx = rx + Math.floor((squareSize - (rackFontData ? rackFontData.width : 8)) / 2);
+        const ly = rackY - 1 + Math.floor((squareSize - (rackFontData ? rackFontData.height : 8)) / 2);
+        const textColor = isBlank ? [255,255,255] : [0,0,0];
+        drawGlyph(tileFont, rackTiles[i].charCodeAt(0), lx, ly, textColor, null);
     }
 
     // Draw move history on right side
@@ -577,17 +582,18 @@ function render() {
 
     // Update display values
     document.getElementById('scaleValue').textContent = scale;
+    document.getElementById('scaleDims').textContent = `${WIDTH * scale}x${HEIGHT * scale}`;
     document.getElementById('squareSizeValue').textContent = squareSize;
-    const dispW = WIDTH * scale;
-    const dispH = HEIGHT * scale;
-    document.querySelector('.range-value').innerHTML = `<span id="scaleValue">${scale}</span>x (${dispW}x${dispH})`;
 }
 
-// Event listeners
-document.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('change', render);
+// Event listeners - use input for live updates, change for selects
+document.querySelectorAll('input').forEach(el => {
     el.addEventListener('input', render);
 });
+document.querySelectorAll('select').forEach(el => {
+    el.addEventListener('change', render);
+});
+document.getElementById('refreshBtn').addEventListener('click', render);
 
 // Initial render
 render();
