@@ -2154,6 +2154,9 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
     int center_idx = (BOARD_DIM / 2) * BOARD_DIM + (BOARD_DIM / 2);
     int board_is_empty = (board->h_letters[center_idx] == ALPHABET_EMPTY_SQUARE_MARKER);
 
+    /* Build rack_bits for recursive_gen's fast tile checks */
+    gen.rack_bits = build_rack_cross_set(&gen.rack);
+
     /* Generate horizontal moves */
     for (int row = 0; row < BOARD_DIM; row++) {
         show_progress(row, 0);
