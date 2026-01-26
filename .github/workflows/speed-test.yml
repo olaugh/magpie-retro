@@ -333,7 +333,10 @@ jobs:
           fi
 
       - name: Post results to PR
-        if: github.event_name == 'pull_request' || inputs.pr_number != ''
+        # Skip for fork PRs (GITHUB_TOKEN can't comment on forks) and when no PR context
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -346,15 +349,13 @@ jobs:
           fi
 
           # Add a header and link to the full workflow run
-          FULL_COMMENT="### Speed Test Benchmark Results
-
-          $COMMENT_BODY
-
-          ---
-          _[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          HEADER="### Speed Test Benchmark Results"
+          FOOTER="---"$'\n'"_[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          FULL_COMMENT="${HEADER}"$'\n\n'"${COMMENT_BODY}"$'\n\n'"${FOOTER}"
 
           # Check for existing benchmark comment and update it, or create new one
-          EXISTING_COMMENT_ID=$(gh api \
+          # Use --paginate to search all comments, not just first page
+          EXISTING_COMMENT_ID=$(gh api --paginate \
             -H "Accept: application/vnd.github+json" \
             /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
             --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
@@ -426,7 +427,10 @@ jobs:
           fi
 
       - name: Post results to PR
-        if: github.event_name == 'pull_request' || inputs.pr_number != ''
+        # Skip for fork PRs (GITHUB_TOKEN can't comment on forks) and when no PR context
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -439,15 +443,13 @@ jobs:
           fi
 
           # Add a header and link to the full workflow run
-          FULL_COMMENT="### Speed Test Benchmark Results
-
-          $COMMENT_BODY
-
-          ---
-          _[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          HEADER="### Speed Test Benchmark Results"
+          FOOTER="---"$'\n'"_[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          FULL_COMMENT="${HEADER}"$'\n\n'"${COMMENT_BODY}"$'\n\n'"${FOOTER}"
 
           # Check for existing benchmark comment and update it, or create new one
-          EXISTING_COMMENT_ID=$(gh api \
+          # Use --paginate to search all comments, not just first page
+          EXISTING_COMMENT_ID=$(gh api --paginate \
             -H "Accept: application/vnd.github+json" \
             /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
             --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
