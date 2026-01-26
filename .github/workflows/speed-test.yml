@@ -1,6 +1,8 @@
 name: Speed Test Benchmark
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       num_games:
@@ -18,6 +20,20 @@ on:
         required: false
         default: 'main'
         type: string
+      pr_number:
+        description: 'PR number to post results as a comment (optional)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  # Defaults for when inputs are not available (e.g., pull_request trigger)
+  DEFAULT_NUM_GAMES: 50
+  DEFAULT_BASELINE_REF: main
 
 jobs:
   # First, check if test and baseline refs resolve to the same commit
@@ -35,11 +51,18 @@ jobs:
       - name: Check if refs are equivalent
         id: check
         run: |
-          TEST_REF="${{ inputs.test_ref || github.ref }}"
-          BASELINE_REF="${{ inputs.baseline_ref }}"
+          # For pull_request events, use github.sha directly (the merge commit)
+          # since refs/pull/N/merge isn't available after a regular fetch
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TEST_SHA="${{ github.sha }}"
+            TEST_REF="PR #${{ github.event.pull_request.number }}"
+          else
+            TEST_REF="${{ inputs.test_ref || github.ref }}"
+            TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
+          fi
+          BASELINE_REF="${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
 
-          # Resolve refs to commit SHAs
-          TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
+          # Resolve baseline ref to commit SHA
           BASELINE_SHA=$(git rev-parse "$BASELINE_REF" 2>/dev/null || echo "")
 
           # Validate that both refs resolved successfully
@@ -119,7 +142,7 @@ jobs:
           mkdir -p results
 
           bazelisk run //tests/gxtest:scrabble_timing_report -- \
-            -n ${{ inputs.num_games }} \
+            -n ${{ inputs.num_games || env.DEFAULT_NUM_GAMES }} \
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
 
@@ -160,7 +183,7 @@ jobs:
 
       - name: Show baseline configuration
         run: |
-          echo "Baseline ref: ${{ inputs.baseline_ref }}"
+          echo "Baseline ref: ${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
           echo "Commit: $(git rev-parse HEAD)"
           echo "Commit message: $(git log -1 --pretty=%s)"
 
@@ -195,14 +218,14 @@ jobs:
           mkdir -p results
 
           bazelisk run //tests/gxtest:scrabble_timing_report -- \
-            -n ${{ inputs.num_games }} \
+            -n ${{ inputs.num_games || env.DEFAULT_NUM_GAMES }} \
             -o ${{ github.workspace }}/results/timing_report.html \
             2>&1 | tee results/benchmark_output.txt
 
       - name: Sanitize baseline ref for artifact name
         id: sanitize-baseline-ref
         run: |
-          ref='${{ inputs.baseline_ref }}'
+          ref='${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}'
           safe="${ref//[\/\\:*?\"<>|]/-}"
           echo "value=$safe" >> "$GITHUB_OUTPUT"
           echo "artifact_name=speed-test-baseline-${safe}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
@@ -236,13 +259,18 @@ jobs:
         run: |
           # Note: jq and bc are pre-installed on ubuntu-latest runners
           TEST_REF="${{ inputs.test_ref || github.ref }}"
-          BASELINE_REF="${{ inputs.baseline_ref }}"
+          BASELINE_REF="${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
+
+          # Write to both step summary and a file for the PR comment
+          SUMMARY_FILE="${RUNNER_TEMP}/comparison_summary.md"
 
           if [[ -f benchmark-results/timing_report_summary.json ]] && [[ -f baseline-results/timing_report_summary.json ]]; then
-            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## Performance Comparison"
+              echo ""
+              echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |"
+              echo "|--------|------|----------|--------|"
+            } | tee -a "$GITHUB_STEP_SUMMARY" > "$SUMMARY_FILE"
 
             # Dynamically extract lexicon names from JSON
             lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
@@ -260,46 +288,50 @@ jobs:
                 else
                   change_display="0%"
                 fi
-                echo "| **${lex} Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" >> $GITHUB_STEP_SUMMARY
+                echo "| **${lex} Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
               fi
             done
 
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Detailed Results" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>Test Results (${TEST_REF})</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat benchmark-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>Baseline Results (${BASELINE_REF})</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat baseline-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            {
+              echo ""
+              echo "### Detailed Results"
+              echo ""
+              echo "<details>"
+              echo "<summary>Test Results (${TEST_REF})</summary>"
+              echo ""
+              echo '```json'
+              cat benchmark-results/timing_report_summary.json
+              echo '```'
+              echo "</details>"
+              echo ""
+              echo "<details>"
+              echo "<summary>Baseline Results (${BASELINE_REF})</summary>"
+              echo ""
+              echo '```json'
+              cat baseline-results/timing_report_summary.json
+              echo '```'
+              echo "</details>"
+            } | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
 
           elif [[ -f benchmark-results/timing_report.html ]] && [[ -f baseline-results/timing_report.html ]]; then
             # Fallback: extract overall hybrid value from HTML when JSON is not available
             # This handles comparisons against older commits that don't have JSON output
-            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "_Note: Using HTML fallback for commits without JSON summary._" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## Performance Comparison"
+              echo ""
+              echo "_Note: Using HTML fallback for commits without JSON summary._"
+              echo ""
+            } | tee -a "$GITHUB_STEP_SUMMARY" > "$SUMMARY_FILE"
 
             # Extract the first "Hybrid (Actual)" value which is the overall average
             test_hybrid=$(grep -oP 'Hybrid \(Actual\)</div><div class="value"[^>]*>\K[0-9.]+' benchmark-results/timing_report.html | head -1)
             base_hybrid=$(grep -oP 'Hybrid \(Actual\)</div><div class="value"[^>]*>\K[0-9.]+' baseline-results/timing_report.html | head -1)
 
             if [[ -n "$test_hybrid" ]] && [[ -n "$base_hybrid" ]]; then
-              echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+              {
+                echo "| Metric | Test (\`${TEST_REF}\`) | Baseline (\`${BASELINE_REF}\`) | Change |"
+                echo "|--------|------|----------|--------|"
+              } | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
 
               change=$(echo "scale=1; (($test_hybrid - $base_hybrid) / $base_hybrid) * 100" | bc)
               if (( $(echo "$change < 0" | bc -l) )); then
@@ -309,15 +341,60 @@ jobs:
               else
                 change_display="0%"
               fi
-              echo "| **Overall Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Overall Hybrid** | ${test_hybrid} frames | ${base_hybrid} frames | ${change_display} |" | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
             else
-              echo "Could not extract timing data from HTML reports." >> $GITHUB_STEP_SUMMARY
+              echo "Could not extract timing data from HTML reports." | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
             fi
 
           else
-            echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Results files not found. Download the artifacts to view the reports." >> $GITHUB_STEP_SUMMARY
+            {
+              echo "## Performance Comparison"
+              echo ""
+              echo "Results files not found. Download the artifacts to view the reports."
+            } | tee -a "$GITHUB_STEP_SUMMARY" > "$SUMMARY_FILE"
+          fi
+
+      - name: Post results to PR
+        # Skip for fork PRs (GITHUB_TOKEN can't comment on forks) and when no PR context
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          SUMMARY_FILE="${RUNNER_TEMP}/comparison_summary.md"
+
+          # Read the comparison summary
+          if [[ -f "$SUMMARY_FILE" ]]; then
+            COMMENT_BODY=$(cat "$SUMMARY_FILE")
+          else
+            COMMENT_BODY="Benchmark comparison complete. View the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi
+
+          # Add a header and link to the full workflow run
+          HEADER="### Speed Test Benchmark Results"
+          FOOTER="---"$'\n'"_[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          FULL_COMMENT="${HEADER}"$'\n\n'"${COMMENT_BODY}"$'\n\n'"${FOOTER}"
+
+          # Check for existing benchmark comment and update it, or create new one
+          # Use --paginate to search all comments, not just first page
+          EXISTING_COMMENT_ID=$(gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
+            | head -1)
+
+          if [[ -n "$EXISTING_COMMENT_ID" ]]; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT_ID} \
+              -f body="$FULL_COMMENT"
+            echo "Updated existing comment #${EXISTING_COMMENT_ID}"
+          else
+            gh pr comment ${PR_NUMBER} --repo ${{ github.repository }} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${PR_NUMBER}"
           fi
 
   # Generate summary when test and baseline are the same commit
@@ -337,16 +414,23 @@ jobs:
           # Note: jq is pre-installed on ubuntu-latest runners
           TEST_REF="${{ inputs.test_ref || github.ref }}"
 
-          echo "## Performance Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Ref:** \`${TEST_REF}\` (commit: \`${{ needs.check-refs.outputs.test_sha }}\`)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Note: Test and baseline refs resolve to the same commit, so no comparison is shown._" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          # Write to both step summary and a file for the PR comment
+          SUMMARY_FILE="${RUNNER_TEMP}/benchmark_summary.md"
+
+          {
+            echo "## Performance Results"
+            echo ""
+            echo "**Ref:** \`${TEST_REF}\` (commit: \`${{ needs.check-refs.outputs.test_sha }}\`)"
+            echo ""
+            echo "_Note: Test and baseline refs resolve to the same commit, so no comparison is shown._"
+            echo ""
+          } | tee -a "$GITHUB_STEP_SUMMARY" > "$SUMMARY_FILE"
 
           if [[ -f benchmark-results/timing_report_summary.json ]]; then
-            echo "| Lexicon | Hybrid Mean | Shadow Mean | NoShadow Mean | Moves |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|-------------|-------------|---------------|-------|" >> $GITHUB_STEP_SUMMARY
+            {
+              echo "| Lexicon | Hybrid Mean | Shadow Mean | NoShadow Mean | Moves |"
+              echo "|---------|-------------|-------------|---------------|-------|"
+            } | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
 
             # Dynamically extract lexicon names from JSON
             lexicons=$(jq -r '.lexicons[].name' benchmark-results/timing_report_summary.json)
@@ -357,18 +441,63 @@ jobs:
               moves=$(jq -r --arg lex "$lex" '.lexicons[] | select(.name == $lex) | .move_count' benchmark-results/timing_report_summary.json)
 
               if [[ "$hybrid" != "null" ]]; then
-                echo "| **${lex}** | ${hybrid} frames | ${shadow} frames | ${noshadow} frames | ${moves} |" >> $GITHUB_STEP_SUMMARY
+                echo "| **${lex}** | ${hybrid} frames | ${shadow} frames | ${noshadow} frames | ${moves} |" | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
               fi
             done
 
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "<details>" >> $GITHUB_STEP_SUMMARY
-            echo "<summary>Full JSON Summary</summary>" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat benchmark-results/timing_report_summary.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            {
+              echo ""
+              echo "<details>"
+              echo "<summary>Full JSON Summary</summary>"
+              echo ""
+              echo '```json'
+              cat benchmark-results/timing_report_summary.json
+              echo '```'
+              echo "</details>"
+            } | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
           else
-            echo "Summary JSON file not found. Download the artifact to view the full HTML report." >> $GITHUB_STEP_SUMMARY
+            echo "Summary JSON file not found. Download the artifact to view the full HTML report." | tee -a "$GITHUB_STEP_SUMMARY" >> "$SUMMARY_FILE"
+          fi
+
+      - name: Post results to PR
+        # Skip for fork PRs (GITHUB_TOKEN can't comment on forks) and when no PR context
+        if: |
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && inputs.pr_number != '')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          SUMMARY_FILE="${RUNNER_TEMP}/benchmark_summary.md"
+
+          # Read the benchmark summary
+          if [[ -f "$SUMMARY_FILE" ]]; then
+            COMMENT_BODY=$(cat "$SUMMARY_FILE")
+          else
+            COMMENT_BODY="Benchmark complete. View the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi
+
+          # Add a header and link to the full workflow run
+          HEADER="### Speed Test Benchmark Results"
+          FOOTER="---"$'\n'"_[View full workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})_"
+          FULL_COMMENT="${HEADER}"$'\n\n'"${COMMENT_BODY}"$'\n\n'"${FOOTER}"
+
+          # Check for existing benchmark comment and update it, or create new one
+          # Use --paginate to search all comments, not just first page
+          EXISTING_COMMENT_ID=$(gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '.[] | select(.body | startswith("### Speed Test Benchmark Results")) | .id' \
+            | head -1)
+
+          if [[ -n "$EXISTING_COMMENT_ID" ]]; then
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              /repos/${{ github.repository }}/issues/comments/${EXISTING_COMMENT_ID} \
+              -f body="$FULL_COMMENT"
+            echo "Updated existing comment #${EXISTING_COMMENT_ID}"
+          else
+            gh pr comment ${PR_NUMBER} --repo ${{ github.repository }} --body "$FULL_COMMENT"
+            echo "Posted new comment to PR #${PR_NUMBER}"
           fi
