@@ -26,6 +26,10 @@ on:
         default: ''
         type: string
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
   # Defaults for when inputs are not available (e.g., pull_request trigger)
   DEFAULT_NUM_GAMES: 50
