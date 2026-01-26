@@ -47,11 +47,18 @@ jobs:
       - name: Check if refs are equivalent
         id: check
         run: |
-          TEST_REF="${{ inputs.test_ref || github.ref }}"
+          # For pull_request events, use github.sha directly (the merge commit)
+          # since refs/pull/N/merge isn't available after a regular fetch
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TEST_SHA="${{ github.sha }}"
+            TEST_REF="PR #${{ github.event.pull_request.number }}"
+          else
+            TEST_REF="${{ inputs.test_ref || github.ref }}"
+            TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
+          fi
           BASELINE_REF="${{ inputs.baseline_ref || env.DEFAULT_BASELINE_REF }}"
 
-          # Resolve refs to commit SHAs
-          TEST_SHA=$(git rev-parse "$TEST_REF" 2>/dev/null || echo "")
+          # Resolve baseline ref to commit SHA
           BASELINE_SHA=$(git rev-parse "$BASELINE_REF" 2>/dev/null || echo "")
 
           # Validate that both refs resolved successfully
