@@ -1671,63 +1671,66 @@ static void recursive_gen(MoveGenState *gen, int col, uint32_t node_index,
             MachineLetter tile = KWG_TILE(node);
 
             if (tile != 0) {  /* Skip separator */
-                /* Check if tile is in rack and cross-set */
-                int has_tile = gen->rack.counts[tile] > 0;
+                /* Check cross-set first (cheap bit test), then rack if in cross-set.
+                 * This avoids rack.counts lookup for tiles not in cross_set. */
+                if (in_cross_set(cross_set, tile)) {
+                    int has_tile = gen->rack.counts[tile] > 0;
 
-                if ((has_tile || has_blank) && in_cross_set(cross_set, tile)) {
-                    uint32_t next_index = KWG_ARC_INDEX(node);
-                    int accepts = KWG_ACCEPTS(node);
+                    if (has_tile || has_blank) {
+                        uint32_t next_index = KWG_ARC_INDEX(node);
+                        int accepts = KWG_ACCEPTS(node);
 
-                    /* Try with actual tile */
-                    if (has_tile) {
-                        gen->rack.counts[tile]--;
-                        gen->rack.total--;
-                        gen->tiles_played++;
+                        /* Try with actual tile */
+                        if (has_tile) {
+                            gen->rack.counts[tile]--;
+                            gen->rack.total--;
+                            gen->tiles_played++;
 
-                        /* Update leave map */
-                        if (klv != NULL) {
-                            leave_map_take_letter(&gen->leave_map, tile,
-                                                  gen->rack.counts[tile]);
+                            /* Update leave map */
+                            if (klv != NULL) {
+                                leave_map_take_letter(&gen->leave_map, tile,
+                                                      gen->rack.counts[tile]);
+                            }
+
+                            go_on(gen, col, tile, next_index, accepts,
+                                  leftstrip, rightstrip);
+
+                            /* Restore leave map */
+                            if (klv != NULL) {
+                                leave_map_add_letter(&gen->leave_map, tile,
+                                                     gen->rack.counts[tile]);
+                            }
+
+                            gen->tiles_played--;
+                            gen->rack.total++;
+                            gen->rack.counts[tile]++;
                         }
 
-                        go_on(gen, col, tile, next_index, accepts,
-                              leftstrip, rightstrip);
+                        /* Try with blank */
+                        if (has_blank) {
+                            gen->rack.counts[BLANK_MACHINE_LETTER]--;
+                            gen->rack.total--;
+                            gen->tiles_played++;
 
-                        /* Restore leave map */
-                        if (klv != NULL) {
-                            leave_map_add_letter(&gen->leave_map, tile,
-                                                 gen->rack.counts[tile]);
+                            /* Update leave map */
+                            if (klv != NULL) {
+                                leave_map_take_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
+                                                      gen->rack.counts[BLANK_MACHINE_LETTER]);
+                            }
+
+                            go_on(gen, col, BLANKED(tile), next_index, accepts,
+                                  leftstrip, rightstrip);
+
+                            /* Restore leave map */
+                            if (klv != NULL) {
+                                leave_map_add_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
+                                                     gen->rack.counts[BLANK_MACHINE_LETTER]);
+                            }
+
+                            gen->tiles_played--;
+                            gen->rack.total++;
+                            gen->rack.counts[BLANK_MACHINE_LETTER]++;
                         }
-
-                        gen->tiles_played--;
-                        gen->rack.total++;
-                        gen->rack.counts[tile]++;
-                    }
-
-                    /* Try with blank */
-                    if (has_blank) {
-                        gen->rack.counts[BLANK_MACHINE_LETTER]--;
-                        gen->rack.total--;
-                        gen->tiles_played++;
-
-                        /* Update leave map */
-                        if (klv != NULL) {
-                            leave_map_take_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
-                                                  gen->rack.counts[BLANK_MACHINE_LETTER]);
-                        }
-
-                        go_on(gen, col, BLANKED(tile), next_index, accepts,
-                              leftstrip, rightstrip);
-
-                        /* Restore leave map */
-                        if (klv != NULL) {
-                            leave_map_add_letter(&gen->leave_map, BLANK_MACHINE_LETTER,
-                                                 gen->rack.counts[BLANK_MACHINE_LETTER]);
-                        }
-
-                        gen->tiles_played--;
-                        gen->rack.total++;
-                        gen->rack.counts[BLANK_MACHINE_LETTER]++;
                     }
                 }
             }
@@ -2020,6 +2023,9 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
     /* Copy rack (we modify it during generation) */
     memcpy(&gen.rack, rack, sizeof(Rack));
 
+    /* Build rack_bits bitmap for fast tile-in-rack checks */
+    gen.rack_bits = build_rack_cross_set(&gen.rack);
+
     /* Initialize leave map if KLV is available */
     if (klv != NULL) {
         leave_map_init(&gen.leave_map, klv, rack);
@@ -2053,6 +2059,8 @@ void generate_moves(const Board *board, const Rack *rack, const Rack *opp_rack,
 
     /* Restore rack after shadow (gen_shadow modifies it) */
     memcpy(&gen.rack, rack, sizeof(Rack));
+    /* Restore rack_bits after shadow (shadow may modify it during exploration) */
+    gen.rack_bits = build_rack_cross_set(&gen.rack);
 
     /*
      * Process anchors from heap in best-first order
